@@ -1,0 +1,131 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  body {
+    @apply bg-background text-on-surface antialiased selection:bg-primary-container selection:text-on-primary-container;
+  }
+}
+
+@layer utilities {
+  .icon-fill {
+    font-variation-settings: "FILL" 1;
+  }
+}
+
+/* ── Clases del prototipo original, no expresables como utilidades de Tailwind ── */
+
+/* Auditoría Edenred: hover-lift + progreso + transiciones de modal */
+.bento-lift {
+  transition: all 300ms ease;
+}
+.bento-lift:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.1);
+}
+@keyframes progressLoad {
+  0% { width: 0%; }
+  100% { width: 68%; }
+}
+.animate-progress {
+  animation: progressLoad 1.5s ease-out forwards;
+}
+
+/* Módulo de Flota: scrollbar personalizado del data grid */
+.custom-scrollbar::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+.custom-scrollbar::-webkit-scrollbar-track {
+  background: transparent;
+}
+.custom-scrollbar::-webkit-scrollbar-thumb {
+  background-color: #bec9c1;
+  border-radius: 10px;
+}
+
+/* Captura Móvil: glassmorphism + slider "swipe to send" + input de odómetro */
+.glass-card {
+  background: rgba(255, 255, 255, 0.85);
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+  border: 1px solid rgba(255, 255, 255, 0.4);
+  box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.05);
+}
+.swipe-track {
+  background: linear-gradient(90deg, theme("colors.surface-container-high") 0%, rgba(229, 233, 228, 0.5) 100%);
+  border-radius: 999px;
+  position: relative;
+  height: 64px;
+  overflow: hidden;
+  display: flex;
+  align-items: center;
+}
+.swipe-thumb {
+  height: 56px;
+  width: 56px;
+  background-color: theme("colors.primary-container");
+  border-radius: 50%;
+  position: absolute;
+  left: 4px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: white;
+  box-shadow: 0 4px 12px rgba(0, 104, 71, 0.3);
+  cursor: pointer;
+  touch-action: none;
+}
+.swipe-text {
+  width: 100%;
+  text-align: center;
+  color: theme("colors.on-surface-variant");
+  font-weight: 600;
+  pointer-events: none;
+  opacity: 0.7;
+}
+.odometer-input::-webkit-inner-spin-button,
+.odometer-input::-webkit-outer-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
+}
+.odometer-input {
+  text-align: center;
+  letter-spacing: 0.05em;
+}
+
+/* Dashboard: bento grid, notificación pulsante, glass header */
+@keyframes pulse-red {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(220, 38, 38, 0.7); }
+  50% { box-shadow: 0 0 0 4px rgba(220, 38, 38, 0); }
+}
+.notification-pulse::after {
+  content: "";
+  position: absolute;
+  top: 2px;
+  right: 2px;
+  width: 8px;
+  height: 8px;
+  background-color: #ef4444;
+  border-radius: 50%;
+  animation: pulse-red 2s infinite;
+}
+.bento-container {
+  display: grid;
+  gap: 16px;
+  grid-template-columns: repeat(12, minmax(0, 1fr));
+}
+.bento-item {
+  border: 1px solid #e5e7eb;
+  box-shadow: 0 2px 4px -1px rgba(0, 0, 0, 0.05), 0 1px 2px -1px rgba(0, 0, 0, 0.03);
+  transition: all 300ms ease;
+}
+.bento-item:hover {
+  transform: translateY(-4px);
+  box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.1);
+}
+.glass-header {
+  background: rgba(255, 255, 255, 0.8);
+  backdrop-filter: blur(20px);
+}
