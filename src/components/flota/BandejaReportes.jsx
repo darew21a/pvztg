@@ -1,5 +1,6 @@
 import { useReportes } from "../../hooks/useReportes.js";
 import { obtenerNombreDepartamento } from "../../data/departamentosStore.js";
+import EnlaceDescargaProtegida from "../ui/EnlaceDescargaProtegida.jsx";
 
 const ETIQUETAS_TIPO_REPORTE = {
   anomalia: "Anomalía",
@@ -30,10 +31,10 @@ function BandejaReportes() {
                 {reporte.autorNombre} - {obtenerNombreDepartamento(reporte.autorDepartamento)}
               </p>
               {reporte.pdfUrl && (
-                <a href={reporte.pdfUrl} download={`${reporte.folio}.pdf`} className="font-label-sm text-label-sm text-primary hover:underline flex items-center gap-1 w-fit">
+                <EnlaceDescargaProtegida url={reporte.pdfUrl} nombre={`${reporte.folio}.pdf`} className="font-label-sm text-label-sm text-primary hover:underline flex items-center gap-1 w-fit">
                   <span className="material-symbols-outlined text-[14px]">download</span>
                   Descargar PDF
-                </a>
+                </EnlaceDescargaProtegida>
               )}
             </div>
           ))

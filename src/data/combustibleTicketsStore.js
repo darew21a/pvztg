@@ -22,6 +22,11 @@ function notificar() {
   listeners.forEach((callback) => callback(tickets));
 }
 
+export function reemplazarTicketsCombustible(ticketsRemotos) {
+  tickets = Array.isArray(ticketsRemotos) ? ticketsRemotos : [];
+  notificar();
+}
+
 export function suscribirTicketsCombustible(callback) {
   listeners.add(callback);
   return () => listeners.delete(callback);

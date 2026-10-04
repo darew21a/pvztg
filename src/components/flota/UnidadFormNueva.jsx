@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { agregarUnidad } from "../../data/unidadesStore.js";
+import { crearUnidadApi } from "../../services/unidadService.js";
 import CampoUnidad from "./CampoUnidad.jsx";
 
 const CAMPOS_ALTA = [
@@ -26,14 +27,19 @@ function UnidadFormNueva({ onCerrar }) {
     setDatos((anterior) => ({ ...anterior, [name]: value }));
   }
 
-  function handleSubmit(event) {
+  async function handleSubmit(event) {
     event.preventDefault();
     if (!datos.numeroSerie?.trim()) {
       setError("El número de serie (VIN) es obligatorio: es la llave única de la unidad.");
       return;
     }
-    agregarUnidad(datos);
-    onCerrar();
+    try {
+      const respuesta = await crearUnidadApi(datos);
+      agregarUnidad({ ...datos, id: String(respuesta.id) });
+      onCerrar();
+    } catch (apiError) {
+      setError(apiError.message);
+    }
   }
 
   return (

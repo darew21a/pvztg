@@ -1,4 +1,3 @@
-import unidadesIniciales from "./unidades.json";
 
 /**
  * ============================================================================
@@ -14,11 +13,8 @@ import unidadesIniciales from "./unidades.json";
  * garantizado y sin duplicados - muchas unidades aún no tienen ECONOMICO
  * asignado en el Excel original.
  *
- * Mientras no exista el backend PHP, este módulo es la única fuente de
- * verdad en memoria: los componentes lo mutan directamente (ver
- * `actualizarUnidad`, `agregarUnidad`, `eliminarUnidad`). Cuando el backend
- * exista, estas funciones se reemplazan por llamadas a la API sin tener que
- * tocar los componentes que las consumen.
+ * El backend es la fuente de verdad persistente; este módulo sólo mantiene
+ * una caché reactiva en memoria para compartir resultados entre vistas.
  * ============================================================================
  */
 
@@ -34,11 +30,18 @@ export const ESTADOS_UNIDAD = [
 export const TIPOS_COMBUSTIBLE = ["MAGNA", "DIESEL", "G SUPER"];
 
 // Copia mutable en memoria - ver nota de arquitectura arriba.
-let unidades = [...unidadesIniciales];
+// El catálogo se carga desde la API. Una instalación nueva debe comenzar
+// vacía y esperar la primera carga masiva, no mostrar datos de ejemplo.
+let unidades = [];
 const listeners = new Set();
 
 function notificar() {
   listeners.forEach((callback) => callback(unidades));
+}
+
+export function reemplazarUnidades(unidadesRemotas) {
+  unidades = Array.isArray(unidadesRemotas) ? unidadesRemotas : [];
+  notificar();
 }
 
 /** Suscribe un callback a cambios en la lista de unidades. Devuelve la función de limpieza. */
@@ -64,30 +67,34 @@ export function actualizarUnidad(id, cambios) {
 const CAMPOS_PARQUE_VEHICULAR = new Set([
   "marca",
   "submarca",
+  "cilindros",
   "tipo",
   "modelo",
   "numeroSerie",
   "placas",
   "placas2025",
+  "placasVigentesAnio",
   "centroGestor",
   "centroCostos",
   "ubicacionTecnica",
   "rpeResguardante",
   "arrendadora",
   "conductorAsignado",
+  "departamentoId",
   "departamento",
 ]);
 
 /**
- * Actualiza únicamente datos maestros importados por número económico.
- * Los campos de Edenred, documentos, fotografías y demás datos operativos
- * quedan intactos porque nunca forman parte de la lista importable.
+ * Actualiza datos maestros importados por número económico. Los valores
+ * confidenciales de Edenred y los documentos quedan fuera de la caché general.
  */
 export function actualizarParqueVehicular(actualizaciones) {
   const cambiosPorId = new Map();
   actualizaciones.forEach(({ unidad, cambios }) => {
     const cambiosPermitidos = Object.fromEntries(
-      Object.entries(cambios).filter(([campo, valor]) => CAMPOS_PARQUE_VEHICULAR.has(campo) && valor !== null && valor !== undefined && String(valor).trim() !== ""),
+      Object.entries(cambios).filter(([campo, valor]) => CAMPOS_PARQUE_VEHICULAR.has(campo)
+        && (["placas2025", "placasVigentesAnio"].includes(campo)
+          || (valor !== null && valor !== undefined && String(valor).trim() !== ""))),
     );
     if (unidad && Object.keys(cambiosPermitidos).length > 0) cambiosPorId.set(unidad.id, cambiosPermitidos);
   });
@@ -98,17 +105,22 @@ export function actualizarParqueVehicular(actualizaciones) {
   return cambiosPorId.size;
 }
 
-/** Da de alta una unidad nueva. `datos` debe incluir al menos `numeroSerie` (llave interna). */
+/** Da de alta en caché una unidad persistida y conserva su ID asignado por la API. */
 export function agregarUnidad(datos) {
+  if (datos.id == null || String(datos.id).trim() === "") {
+    throw new Error("No se puede agregar una unidad a la caché sin el identificador persistente de la API.");
+  }
   const nuevaUnidad = {
     economico: null,
     marca: null,
     submarca: null,
+    cilindros: null,
     tipo: null,
     modelo: null,
     numeroSerie: null,
     placas: null,
     placas2025: null,
+    placasVigentesAnio: null,
     centroGestor: null,
     centroCostos: null,
     ubicacionTecnica: null,
@@ -118,10 +130,10 @@ export function agregarUnidad(datos) {
     kilometraje: null,
     tipoCombustible: null,
     estado: "en-estacion",
-    imagenUrl: null,
+    requiereResguardante2: false,
     documentos: [],
     ...datos,
-    id: datos.numeroSerie,
+    id: String(datos.id),
   };
   unidades = [nuevaUnidad, ...unidades];
   notificar();

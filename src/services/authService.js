@@ -2,10 +2,7 @@
  * ============================================================================
  * SERVICIO DE AUTENTICACIÓN
  * ============================================================================
- * Contrato de comunicación con el backend REST (PHP 8.x + PDO). Este módulo
- * NO contiene datos de ejemplo: cada función define únicamente la forma del
- * payload de entrada/salida esperado, lista para apuntar a los endpoints
- * reales una vez que el backend exista.
+ * Cliente para los endpoints REST del backend Node.js/Express.
  *
  * Todas las llamadas usan `fetch` nativo (sin librerías HTTP externas, según
  * el requisito de sintaxis 2026 / cero dependencias innecesarias) y devuelven
@@ -15,20 +12,21 @@
 
 // Base de la API. En producción se define vía variable de entorno de Vite
 // (.env → VITE_API_BASE_URL=http://pv-ztg.cfe.local/api) y nunca hardcodeada.
+import { getAuthHeaders } from "./apiAuth.js";
+
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL ?? "/api";
 
 /**
- * @typedef {"auditor"} RolOperativo
- * Único rol operativo del software (el de Conductor se canceló: el
- * personal de campo no usará la app). El SuperAdministrador entra por un
- * flujo separado (ver `loginSuperAdmin`) y no se selecciona aquí.
+ * @typedef {"apv"} RolOperativo
+ * Rol principal del administrador operativo de la flota (APV). El
+ * SuperAdministrador (STT) y el Jefe de Departamento usan flujos separados.
  */
 
 /**
  * @typedef {Object} CredencialesLogin
  * @property {string} rcf         Clave RCF / usuario, proporcionada por el administrador.
  * @property {string} password    Contraseña del usuario.
- * @property {RolOperativo} rol   Siempre "auditor" - se envía explícito para que el backend lo valide igual.
+ * @property {RolOperativo} rol   Siempre "apv" - se envía explícito para que el backend lo valide igual.
  */
 
 /**
@@ -37,7 +35,7 @@ const API_BASE_URL = import.meta.env.VITE_API_BASE_URL ?? "/api";
  * @property {Object} usuario         Datos del usuario autenticado.
  * @property {string} usuario.id      ID único del usuario (RCF).
  * @property {string} usuario.nombre  Nombre completo.
- * @property {RolOperativo | "superadmin"} usuario.rol  Rol confirmado por el backend.
+ * @property {RolOperativo | "stt" | "jefe-departamento"} usuario.rol  Rol confirmado por el backend.
  */
 
 /**
@@ -107,72 +105,24 @@ export async function loginJefeDepartamento(credenciales) {
 }
 
 /**
- * @typedef {"celular" | "correo"} MedioSSPR
+ * Cambia la contraseña de la sesión autenticada.
  */
-
-/**
- * Paso 1 del SSPR: solicita el envío de un código OTP al medio elegido.
- * El backend es responsable de generar el OTP y enviarlo por SMS/correo;
- * aquí solo se dispara la solicitud y se recibe un `solicitudId` para
- * amarrar los pasos siguientes.
- * POST /auth/recuperacion/solicitar
- * @param {{ rcf: string, medio: MedioSSPR }} datos
- * @returns {Promise<{ solicitudId: string }>}
- */
-export async function solicitarRestablecimiento({ rcf, medio }) {
-  const response = await fetch(`${API_BASE_URL}/auth/recuperacion/solicitar`, {
+export async function cambiarPassword({ passwordActual, nuevaPassword }) {
+  const response = await fetch(`${API_BASE_URL}/auth/password`, {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ rcf, medio }),
+    headers: { "Content-Type": "application/json", ...getAuthHeaders() },
+    body: JSON.stringify({ passwordActual, nuevaPassword }),
   });
-
-  if (!response.ok) {
-    const errorBody = await response.json().catch(() => null);
-    throw new Error(errorBody?.mensaje ?? "No fue posible enviar el código de verificación.");
-  }
-
-  return response.json();
+  const body = await response.json().catch(() => null);
+  if (!response.ok) throw new Error(body?.mensaje ?? "No fue posible actualizar la contraseña.");
+  return body;
 }
 
-/**
- * Paso 2 del SSPR: verifica el código OTP recibido por el usuario.
- * POST /auth/recuperacion/verificar
- * @param {{ solicitudId: string, otp: string }} datos
- * @returns {Promise<{ tokenRestablecimiento: string }>}
- */
-export async function verificarOtp({ solicitudId, otp }) {
-  const response = await fetch(`${API_BASE_URL}/auth/recuperacion/verificar`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ solicitudId, otp }),
+export async function obtenerPerfilActual() {
+  const response = await fetch(`${API_BASE_URL}/usuarios/perfil`, {
+    headers: getAuthHeaders(),
   });
-
-  if (!response.ok) {
-    const errorBody = await response.json().catch(() => null);
-    throw new Error(errorBody?.mensaje ?? "El código ingresado no es válido.");
-  }
-
-  return response.json();
-}
-
-/**
- * Paso 3 del SSPR: establece la nueva contraseña usando el token emitido
- * tras verificar el OTP.
- * POST /auth/recuperacion/restablecer
- * @param {{ tokenRestablecimiento: string, nuevaPassword: string }} datos
- * @returns {Promise<{ ok: true }>}
- */
-export async function restablecerPassword({ tokenRestablecimiento, nuevaPassword }) {
-  const response = await fetch(`${API_BASE_URL}/auth/recuperacion/restablecer`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ tokenRestablecimiento, nuevaPassword }),
-  });
-
-  if (!response.ok) {
-    const errorBody = await response.json().catch(() => null);
-    throw new Error(errorBody?.mensaje ?? "No fue posible actualizar la contraseña.");
-  }
-
-  return response.json();
+  const body = await response.json().catch(() => null);
+  if (!response.ok) throw new Error(body?.mensaje ?? "No fue posible actualizar el perfil.");
+  return body;
 }

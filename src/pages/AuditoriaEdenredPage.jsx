@@ -1,4 +1,5 @@
-import { useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useSearchParams } from "react-router-dom";
 import TopNavBar from "../components/layout/TopNavBar.jsx";
 import { useUnidades } from "../hooks/useUnidades.js";
 import { useCargasEdenred } from "../hooks/useTransaccionesEdenred.js";
@@ -10,7 +11,11 @@ import { useAuth } from "../hooks/useAuth.js";
 import { useHistorialEliminaciones } from "../hooks/useHistorialEliminaciones.js";
 import BarraFiltrosFlota from "../components/flota/BarraFiltrosFlota.jsx";
 import TablaColumnasDinamicas from "../components/flota/TablaColumnasDinamicas.jsx";
-import { useSearch } from "../context/SearchContext.jsx";
+import { useSearch } from "../context/useSearch.js";
+import { convertirAFecha, formatearFechaHora } from "../utils/formatearFecha.js";
+import { getAuthHeaders } from "../services/apiAuth.js";
+import { hashArchivo, hashObjeto } from "../utils/hashArchivo.js";
+import { obtenerAniosDisponibles, useActualYear } from "../hooks/useEjercicioFiscal.js";
 
 /** Fases del flujo de carga: inactivo → analizando → vista previa (a confirmar) → aplicado. */
 const FASES = { INACTIVO: "inactivo", ANALIZANDO: "analizando", VISTA_PREVIA: "vista-previa", APLICADO: "aplicado" };
@@ -32,12 +37,14 @@ const FASES = { INACTIVO: "inactivo", ANALIZANDO: "analizando", VISTA_PREVIA: "v
 function AuditoriaEdenredPage() {
   const unidades = useUnidades();
   const cargasEdenred = useCargasEdenred();
+  const [searchParams, setSearchParams] = useSearchParams();
   const [fase, setFase] = useState(FASES.INACTIVO);
   const [resultado, setResultado] = useState(null);
   const [transaccionesCrudas, setTransaccionesCrudas] = useState([]);
   const [errorMensaje, setErrorMensaje] = useState("");
   // Elección del Administrador para cada placa ambigua: clave "placa|mes" -> id de unidad elegida (o "" si aún no decide).
   const [resolucionesAmbiguas, setResolucionesAmbiguas] = useState({});
+  const [archivoHash, setArchivoHash] = useState("");
   const inputArchivoRef = useRef(null);
 
   async function manejarArchivoSeleccionado(event) {
@@ -46,10 +53,38 @@ function AuditoriaEdenredPage() {
     setErrorMensaje("");
     setFase(FASES.ANALIZANDO);
     try {
-      const transacciones = await leerArchivoEdenred(archivo);
+      const hash = await hashArchivo(archivo);
+      const estado = await fetch(`${import.meta.env.VITE_API_BASE_URL ?? "/api"}/edenred/cargas/${hash}`, { headers: getAuthHeaders() });
+      const estadoBody = await estado.json().catch(() => null);
+      if (!estado.ok) throw new Error(estadoBody?.mensaje ?? "No fue posible validar el archivo Edenred.");
+      if (estadoBody.yaCargado) {
+        throw new Error("Este archivo de Edenred ya fue cargado; no se volverán a sumar sus transacciones.");
+      }
+      const transaccionesArchivo = await leerArchivoEdenred(archivo);
+      const verificacion = await fetch(`${import.meta.env.VITE_API_BASE_URL ?? "/api"}/edenred/cargas/verificar`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", ...getAuthHeaders() },
+        body: JSON.stringify({ transacciones: transaccionesArchivo }),
+      });
+      const verificacionBody = await verificacion.json().catch(() => null);
+      if (!verificacion.ok) throw new Error(verificacionBody?.mensaje ?? "No fue posible verificar las transacciones de Edenred.");
+      if (verificacionBody.transaccionesRepetidas === transaccionesArchivo.length) {
+        throw new Error(`Este reporte de Edenred ya fue cargado anteriormente: sus ${transaccionesArchivo.length} transacción(es) ya están registradas. No se actualizarán unidades.`);
+      }
+      const transaccionesPrevias = (cargasEdenred ?? []).flatMap((carga) => carga.transacciones ?? []);
+      const hashesPrevios = new Set(await Promise.all(transaccionesPrevias.map(hashObjeto)));
+      const transacciones = [];
+      for (const transaccion of transaccionesArchivo) {
+        const hash = await hashObjeto(transaccion);
+        if (!hashesPrevios.has(hash)) transacciones.push(transaccion);
+      }
+      if (transacciones.length === 0) {
+        throw new Error("Todas las transacciones de este archivo de Edenred ya fueron cargadas; no se volverán a sumar.");
+      }
       const analisis = analizarTransacciones(transacciones, unidades);
       setTransaccionesCrudas(transacciones);
       setResultado(analisis);
+      setArchivoHash(hash);
       setFase(FASES.VISTA_PREVIA);
     } catch (error) {
       setErrorMensaje(error.message);
@@ -59,23 +94,18 @@ function AuditoriaEdenredPage() {
     }
   }
 
-  function confirmarYAplicar() {
+  async function confirmarYAplicar() {
     const resumenAplicado = [];
-    const tiposCombustiblePorUnidad = new Map();
 
     resultado.resumenPorUnidad.forEach(({ unidad, mes, km, litros, importe, kilometrajeActual, tipoCombustible, anomalias }) => {
       const kilometrajeAnterior = unidad.kilometraje ?? 0;
-      aplicarContribucionEdenred(unidad.id, { mes, km, litros, importe });
+      const tipoCombustibleAnterior = unidad.tipoCombustible ?? null;
       // El kilometraje visible en Flota se actualiza con la lectura de
       // odómetro más reciente que trae Edenred - así ya no depende de que
       // alguien lo capture a mano. Se registra el valor anterior para
       // poder revertirlo si esta carga se elimina después (Módulo 3).
       const kilometrajeAplicado = kilometrajeActual > kilometrajeAnterior ? kilometrajeActual : kilometrajeAnterior;
-      if (kilometrajeActual > kilometrajeAnterior) {
-        actualizarUnidad(unidad.id, { kilometraje: kilometrajeActual });
-      }
-      if (tipoCombustible) tiposCombustiblePorUnidad.set(unidad.id, tipoCombustible);
-      resumenAplicado.push({ unidadId: unidad.id, mes, km, litros, importe, kilometrajeAnterior, kilometrajeAplicado, anomalias: anomalias ?? [] });
+      resumenAplicado.push({ unidadId: unidad.id, mes, km, litros, importe, kilometrajeAnterior, kilometrajeAplicado, tipoCombustibleAnterior, tipoCombustible, anomalias: anomalias ?? [] });
     });
 
     // Placas ambiguas: solo se aplican las que el Administrador sí resolvió eligiendo una unidad.
@@ -84,18 +114,30 @@ function AuditoriaEdenredPage() {
       if (!unidadElegidaId) return;
       const unidadElegida = unidades.find((unidad) => unidad.id === unidadElegidaId);
       const kilometrajeAnterior = unidadElegida?.kilometraje ?? 0;
-      aplicarContribucionEdenred(unidadElegidaId, { mes, km, litros, importe });
+      const tipoCombustibleAnterior = unidadElegida?.tipoCombustible ?? null;
       const kilometrajeAplicado = kilometrajeActual > kilometrajeAnterior ? kilometrajeActual : kilometrajeAnterior;
-      if (kilometrajeActual > kilometrajeAnterior) {
-        actualizarUnidad(unidadElegidaId, { kilometraje: kilometrajeActual });
-      }
-      if (tipoCombustible) tiposCombustiblePorUnidad.set(unidadElegidaId, tipoCombustible);
-      resumenAplicado.push({ unidadId: unidadElegidaId, mes, km, litros, importe, kilometrajeAnterior, kilometrajeAplicado, anomalias: anomalias ?? [] });
+      resumenAplicado.push({ unidadId: unidadElegidaId, mes, km, litros, importe, kilometrajeAnterior, kilometrajeAplicado, tipoCombustibleAnterior, tipoCombustible, anomalias: anomalias ?? [] });
     });
 
-    tiposCombustiblePorUnidad.forEach((tipoCombustible, unidadId) => {
-      actualizarUnidad(unidadId, { tipoCombustible });
+    try {
+      const response = await fetch(`${import.meta.env.VITE_API_BASE_URL ?? "/api"}/edenred/cargas`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", ...getAuthHeaders() },
+        body: JSON.stringify({ periodo: resultado.meses, transacciones: transaccionesCrudas, resumenAplicado, archivoHash }),
+      });
+      const body = await response.json().catch(() => null);
+      if (!response.ok) throw new Error(body?.mensaje ?? "No fue posible guardar la carga de Edenred.");
+    } catch (error) {
+      setErrorMensaje(error.message);
+      return;
+    }
+    const tiposCombustiblePorUnidad = new Map();
+    resumenAplicado.forEach(({ unidadId, mes, km, litros, importe, kilometrajeAplicado, kilometrajeAnterior, tipoCombustible }) => {
+      aplicarContribucionEdenred(unidadId, { mes, km, litros, importe });
+      if (kilometrajeAplicado > kilometrajeAnterior) actualizarUnidad(unidadId, { kilometraje: kilometrajeAplicado });
+      if (tipoCombustible) tiposCombustiblePorUnidad.set(unidadId, tipoCombustible);
     });
+    tiposCombustiblePorUnidad.forEach((tipoCombustible, unidadId) => actualizarUnidad(unidadId, { tipoCombustible }));
     agregarCargaEdenred({ periodo: resultado.meses, transacciones: transaccionesCrudas, resumenAplicado });
     setFase(FASES.APLICADO);
   }
@@ -104,15 +146,19 @@ function AuditoriaEdenredPage() {
     setResultado(null);
     setTransaccionesCrudas([]);
     setResolucionesAmbiguas({});
+    setArchivoHash("");
     setFase(FASES.INACTIVO);
   }
 
   return (
     <>
-      <TopNavBar activeTab="Alertas" searchPlaceholder="Buscar unidad o folio..." />
+      <TopNavBar searchPlaceholder="Buscar unidad o folio..." />
       <div className="p-margin-desktop flex-1 space-y-8">
         <div>
-          <h1 className="font-headline-lg text-headline-lg text-on-surface">Análisis de Combustible</h1>
+          <div className="flex flex-wrap items-center gap-3">
+            <h1 className="font-headline-lg text-headline-lg text-on-surface">Análisis de Combustible</h1>
+            <img src="/edenred.svg" alt="Edenred" className="h-8 w-auto max-w-32 object-contain" />
+          </div>
           <p className="font-body-md text-body-md text-on-surface-variant mt-1">
             Sube el reporte de Edenred y el sistema identifica automáticamente a qué unidad y mes pertenece cada carga.
           </p>
@@ -162,7 +208,7 @@ function AuditoriaEdenredPage() {
           </div>
         )}
 
-        <TablaDetalladaEdenred cargas={cargasEdenred} unidades={unidades} />
+        <TablaDetalladaEdenred cargas={cargasEdenred} unidades={unidades} cargaInicialId={searchParams.get("carga")} onCargaInicialAplicada={() => setSearchParams({}, { replace: true })} />
       </div>
     </>
   );
@@ -175,7 +221,7 @@ function PantallaAnalizando() {
       <span className="material-symbols-outlined text-primary text-5xl animate-spin">progress_activity</span>
       <p className="font-title-md text-title-md text-on-surface">Analizando el reporte…</p>
       <p className="font-body-md text-body-md text-on-surface-variant text-center max-w-sm">
-        Cruzando cada transacción con su unidad por placa, agrupando por mes y revisando anomalías de rendimiento.
+        Cruzando cada transacción aprobada con su unidad y validando excesos de capacidad y lecturas de odómetro atípicas.
       </p>
     </div>
   );
@@ -285,8 +331,9 @@ function VistaPrevia({ resultado, onConfirmar, onCancelar, resolucionesAmbiguas,
         <div className="p-4 border-b border-outline-variant/40">
           <h3 className="font-title-md text-title-md text-on-surface">Unidades que se van a actualizar</h3>
         </div>
-        <table className="w-full text-left text-sm">
-          <thead className="bg-surface-container-high font-label-sm text-label-sm text-on-surface-variant uppercase">
+        <div className="transaction-table-scroll custom-scrollbar" role="region" tabIndex={0} aria-label="Unidades que se van a actualizar">
+          <table className="w-full text-left text-sm">
+            <thead className="bg-surface-container-high font-label-sm text-label-sm text-on-surface-variant uppercase">
             <tr>
               <th className="p-3">Económico</th>
               <th className="p-3">Unidad</th>
@@ -297,8 +344,8 @@ function VistaPrevia({ resultado, onConfirmar, onCancelar, resolucionesAmbiguas,
               <th className="p-3 text-right">Importe</th>
               <th className="p-3">Anomalías</th>
             </tr>
-          </thead>
-          <tbody className="divide-y divide-outline-variant/20">
+            </thead>
+            <tbody className="divide-y divide-outline-variant/20">
             {resultado.resumenPorUnidad.map((registro) => (
               <tr key={`${registro.unidad.id}-${registro.mes}`} className={registro.anomalias.length > 0 ? "bg-error-container/10" : ""}>
                 <td className="p-3 font-technical-mono text-technical-mono">{registro.unidad.economico ?? "Pendiente"}</td>
@@ -317,8 +364,9 @@ function VistaPrevia({ resultado, onConfirmar, onCancelar, resolucionesAmbiguas,
                 </td>
               </tr>
             ))}
-          </tbody>
-        </table>
+            </tbody>
+          </table>
+        </div>
       </div>
 
       {resultado.unidadesSinMovimiento.length > 0 && (
@@ -366,23 +414,35 @@ function TarjetaResumen({ etiqueta, valor, destacar = false }) {
  * columnas Económico/Fecha/Placa/Recorrido/Litros/Importe visibles por
  * defecto, con el resto de los campos de Edenred activables por Toggle.
  */
-function TablaDetalladaEdenred({ cargas, unidades }) {
+function TablaDetalladaEdenred({ cargas, unidades, cargaInicialId, onCargaInicialAplicada }) {
   const { usuario } = useAuth();
   const { query } = useSearch();
   const historialEliminaciones = useHistorialEliminaciones();
-  const anioActual = new Date().getFullYear();
+  const anioActual = useActualYear();
   const [anioSeleccionado, setAnioSeleccionado] = useState(anioActual);
-  const [idCargaSeleccionada, setIdCargaSeleccionada] = useState(null);
+  const anioActualAnterior = useRef(anioActual);
+  const [idCargaSeleccionada, setIdCargaSeleccionada] = useState(cargaInicialId);
   const [cargaAEliminar, setCargaAEliminar] = useState(null);
+  const [errorEliminacion, setErrorEliminacion] = useState("");
   const { filtros, setFiltro, limpiarFiltros } = useEstadoFiltrosFlota();
+
+  useEffect(() => {
+    const anioAnterior = anioActualAnterior.current;
+    if (anioAnterior !== anioActual) {
+      anioActualAnterior.current = anioActual;
+      if (anioSeleccionado === anioAnterior) {
+        setAnioSeleccionado(anioActual);
+        setFiltro("anio", String(anioActual));
+      }
+    }
+  }, [anioActual, anioSeleccionado, setFiltro]);
 
   // Límite visual de 12 meses (Módulo 3): el Select de reportes solo
   // lista las cargas cuyo periodo cae en el año fiscal elegido - al
   // cambiar de año, la lista se limpia y solo aparecen las de ese año.
   const aniosConCargas = useMemo(() => {
-    const anios = new Set(cargas.flatMap((carga) => carga.periodo.map((mes) => Number(mes.slice(0, 4)))));
-    anios.add(anioActual);
-    return [...anios].sort((a, b) => b - a);
+    const anios = cargas.flatMap((carga) => carga.periodo.map((mes) => Number(mes.slice(0, 4))));
+    return obtenerAniosDisponibles(anios, anioActual);
   }, [cargas, anioActual]);
 
   const cargasDelAnio = useMemo(
@@ -391,16 +451,36 @@ function TablaDetalladaEdenred({ cargas, unidades }) {
   );
 
   const cargaActual = cargasDelAnio.find((carga) => carga.id === idCargaSeleccionada) ?? cargasDelAnio[0];
+
+  useEffect(() => {
+    if (!cargaInicialId) return;
+    const cargaInicial = cargas.find((carga) => carga.id === cargaInicialId);
+    if (!cargaInicial) return;
+    const anioCarga = Number(cargaInicial.periodo[0]?.slice(0, 4));
+    if (Number.isInteger(anioCarga)) {
+      // Deep links must restore their historical year once the saved carga is available.
+      // oxlint-disable-next-line react/set-state-in-effect
+      setAnioSeleccionado(anioCarga);
+      setFiltro("anio", String(anioCarga));
+      setIdCargaSeleccionada(cargaInicialId);
+    }
+    onCargaInicialAplicada();
+  }, [cargaInicialId, cargas, onCargaInicialAplicada, setFiltro]);
   const transaccionesDeLaCarga = useMemo(() => cargaActual?.transacciones ?? [], [cargaActual]);
   const anomaliasDeLaCarga = useMemo(
     () => (cargaActual?.resumenAplicado ?? []).filter((registro) => registro.anomalias?.length > 0),
     [cargaActual],
   );
 
-  function confirmarEliminarCarga() {
-    eliminarCargaEdenred(cargaAEliminar.id, usuario?.nombre ?? "Administrador");
-    setCargaAEliminar(null);
-    setIdCargaSeleccionada(null); // vuelve a caer en la carga más reciente que quede del año
+  async function confirmarEliminarCarga() {
+    try {
+      setErrorEliminacion("");
+      await eliminarCargaEdenred(cargaAEliminar.id, usuario?.nombre ?? "Administrador");
+      setCargaAEliminar(null);
+      setIdCargaSeleccionada(null); // vuelve a caer en la carga más reciente que quede del año
+    } catch (error) {
+      setErrorEliminacion(error.message);
+    }
   }
 
   // El "Económico" no viene en el reporte de Edenred (ellos usan "Id
@@ -408,13 +488,13 @@ function TablaDetalladaEdenred({ cargas, unidades }) {
   // Placa de cada transacción contra la flota, igual que en el análisis.
   const { indice: indicePorPlaca, placasAmbiguas } = useMemo(() => construirIndicePorPlaca(unidades), [unidades]);
 
-  function economicoDeLaTransaccion(transaccion) {
+  const economicoDeLaTransaccion = useCallback((transaccion) => {
     const economicoReportado = obtenerEconomicoTransaccion(transaccion);
     if (String(economicoReportado).trim()) return String(economicoReportado).trim();
     const placa = String(transaccion["Placa"] ?? "").trim().toUpperCase();
     if (placasAmbiguas.has(placa)) return "⚠ Varias unidades";
     return indicePorPlaca.get(placa)?.economico ?? "Sin coincidencia";
-  }
+  }, [indicePorPlaca, placasAmbiguas]);
 
   // Extractores: le enseñan al núcleo centralizado cómo leer placa/económico/fecha de UNA transacción cruda de Edenred.
   const extractores = useMemo(
@@ -422,14 +502,18 @@ function TablaDetalladaEdenred({ cargas, unidades }) {
       obtenerPlaca: (transaccion) => transaccion["Placa"],
       obtenerEconomico: (transaccion) => economicoDeLaTransaccion(transaccion),
       obtenerFecha: (transaccion) => {
-        const fecha = transaccion["Fecha transacción"];
-        return fecha instanceof Date ? fecha : new Date(fecha);
+        return convertirAFecha(transaccion["Fecha transacción"]);
       },
     }),
-    [indicePorPlaca, placasAmbiguas],
+    [economicoDeLaTransaccion],
   );
 
   const filasFiltradas = useFiltrosFlota(transaccionesDeLaCarga, filtros, extractores);
+
+  function limpiarFiltrosEdenred() {
+    limpiarFiltros();
+    setFiltro("anio", String(anioSeleccionado));
+  }
 
   const aniosDisponibles = useMemo(() => {
     const anios = new Set(
@@ -444,7 +528,7 @@ function TablaDetalladaEdenred({ cargas, unidades }) {
   const columnas = useMemo(
     () => [
       { key: "economico", label: "Económico", render: economicoDeLaTransaccion },
-      { key: "Fecha transacción", label: "Fecha transacción", render: (t) => new Date(t["Fecha transacción"]).toLocaleString("es-MX") },
+      { key: "Fecha transacción", label: "Fecha transacción", render: (t) => formatearFechaHora(t["Fecha transacción"]) },
       { key: "Placa", label: "Placa" },
       { key: "Recorrido", label: "Recorrido", alinearDerecha: true },
       { key: "Cantidad Mercancía", label: "Cantidad Mercancía", alinearDerecha: true },
@@ -464,7 +548,7 @@ function TablaDetalladaEdenred({ cargas, unidades }) {
       { key: "Monto IVA", label: "Monto IVA", opcional: true, alinearDerecha: true },
       { key: "% IVA", label: "% IVA", opcional: true, alinearDerecha: true },
     ],
-    [indicePorPlaca, placasAmbiguas],
+    [economicoDeLaTransaccion],
   );
 
   if (cargas.length === 0) return null;
@@ -482,7 +566,9 @@ function TablaDetalladaEdenred({ cargas, unidades }) {
           <select
             value={anioSeleccionado}
             onChange={(event) => {
-              setAnioSeleccionado(Number(event.target.value));
+              const anio = Number(event.target.value);
+              setAnioSeleccionado(anio);
+              setFiltro("anio", String(anio));
               setIdCargaSeleccionada(null); // la lista de reportes se limpia al cambiar de año
             }}
             className="px-3 py-1.5 border border-outline-variant rounded-md bg-surface-bright text-sm"
@@ -501,13 +587,7 @@ function TablaDetalladaEdenred({ cargas, unidades }) {
             {cargasDelAnio.map((carga) => (
               <option key={carga.id} value={carga.id}>
                 Periodo {carga.periodo.join(", ")} - subido el{" "}
-                {new Date(carga.fechaCarga).toLocaleString("es-MX", {
-                  day: "2-digit",
-                  month: "2-digit",
-                  year: "numeric",
-                  hour: "2-digit",
-                  minute: "2-digit",
-                })}{" "}
+                {formatearFechaHora(carga.fechaCarga)}{" "}
                 ({carga.transacciones.length} transacciones)
               </option>
             ))}
@@ -525,17 +605,28 @@ function TablaDetalladaEdenred({ cargas, unidades }) {
       </div>
 
       <div className="p-4 space-y-4">
+        {errorEliminacion && (
+          <p className="rounded-md border border-error/40 bg-error-container/20 px-3 py-2 text-sm text-error" role="alert">
+            {errorEliminacion}
+          </p>
+        )}
         <BarraFiltrosFlota
           filtros={filtros}
           setFiltro={setFiltro}
-          limpiarFiltros={limpiarFiltros}
+          limpiarFiltros={limpiarFiltrosEdenred}
           camposVisibles={["placa", "economico", "anio", "mes", "dia", "hora"]}
           aniosDisponibles={aniosDisponibles}
         />
         <p className="font-label-sm text-label-sm text-on-surface-variant">
           {filasFiltradas.length} de {transaccionesDeLaCarga.length} transacciones
         </p>
-        <TablaColumnasDinamicas filas={filasFiltradas} columnas={columnas} searchQuery={query} resaltarFilas={Object.values(filtros).some(Boolean)} />
+        <TablaColumnasDinamicas
+          filas={filasFiltradas}
+          columnas={columnas}
+          searchQuery={query}
+          resaltarFilas={Object.values(filtros).some(Boolean)}
+          scrollVertical
+        />
       </div>
 
       {anomaliasDeLaCarga.length > 0 && (
@@ -568,7 +659,7 @@ function TablaDetalladaEdenred({ cargas, unidades }) {
             {historialEliminaciones.map((registro) => (
               <li key={registro.id} className="text-sm border-b border-outline-variant/20 pb-2">
                 <span className="font-technical-mono text-technical-mono text-on-surface-variant">
-                  {new Date(registro.fechaEliminacion).toLocaleString("es-MX")}
+                  {formatearFechaHora(registro.fechaEliminacion)}
                 </span>{" "}
                 - Periodo <strong>{registro.periodo.join(", ")}</strong> ({registro.totalTransacciones} transacciones,{" "}
                 {registro.resumenRevertido.length} unidad(es) revertida(s)) eliminado por <strong>{registro.eliminadoPor}</strong>.
@@ -605,13 +696,3 @@ function TablaDetalladaEdenred({ cargas, unidades }) {
 }
 
 export default AuditoriaEdenredPage;
-
-
-
-
-
-
-
-
-
-

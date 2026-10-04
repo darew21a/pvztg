@@ -1,5 +1,3 @@
-import { generarFolioAleatorio } from "../utils/generarFolio.js";
-
 /**
  * ============================================================================
  * STORE DE REPORTES DE UNIDAD
@@ -10,20 +8,31 @@ import { generarFolioAleatorio } from "../utils/generarFolio.js";
  * una unidad puede acumular varios reportes a lo largo del tiempo y el
  * Dashboard solo necesita contarlos, no anidarlos dentro de cada unidad.
  *
- * Mismo patrón que `unidadesStore.js`: mientras no exista el backend PHP,
- * esta es la única fuente de verdad en memoria.
+ * El backend es la fuente de verdad persistente; este módulo sólo mantiene
+ * una caché reactiva en memoria para compartir resultados entre vistas.
  * ============================================================================
  */
 
 /** @typedef {"leve" | "moderada" | "grave"} GravedadReporte */
 /** @typedef {"anomalia" | "mantenimiento" | "siniestro"} TipoReporte */
 /** @typedef {"robo" | "asalto" | "secuestro" | null} DetalleSiniestro */
+export const ESTADOS_REPORTE = [
+  { value: "recibido", label: "Recibido", color: "secondary" },
+  { value: "en-revision", label: "En revisión", color: "tertiary" },
+  { value: "en-atencion", label: "En atención", color: "primary" },
+  { value: "resuelto", label: "Resuelto", color: "success" },
+];
 
 let reportes = [];
 const listeners = new Set();
 
 function notificar() {
   listeners.forEach((callback) => callback(reportes));
+}
+
+export function reemplazarReportes(reportesRemotos) {
+  reportes = Array.isArray(reportesRemotos) ? reportesRemotos : [];
+  notificar();
 }
 
 export function suscribirReportes(callback) {
@@ -54,19 +63,37 @@ export function obtenerReportes() {
 
 
 
-export function agregarReporte(datos) {
-  const ahora = new Date();
+export function agregarReporteRemoto(datos, remoto) {
   const reporte = {
-    id: `RPT-${ahora.getTime()}`,
-    // ¡Usas tu función utilitaria independiente!
-    folio: generarFolioAleatorio("PVZTG", 4), 
-    fecha: ahora.toISOString(),
+    id: String(remoto.id),
+    folio: remoto.folio,
     ...datos,
+    ...remoto,
   };
-  
-  reportes = [reporte, ...reportes];
+  reportes = [reporte, ...reportes.filter((item) => item.id !== reporte.id)];
   notificar();
   return reporte;
+}
+
+export function actualizarReporte(id, cambios) {
+  reportes = reportes.map((reporte) => (reporte.id === id ? { ...reporte, ...cambios } : reporte));
+  notificar();
+  return reportes.find((reporte) => reporte.id === id) ?? null;
+}
+
+export function agregarSeguimientoReporte(id, { autorTipo, autorNombre, mensaje }) {
+  const texto = String(mensaje ?? "").trim();
+  if (!texto) return null;
+  const reporte = reportes.find((item) => item.id === id);
+  if (!reporte) return null;
+  const seguimiento = {
+    id: `SEG-${Date.now()}`,
+    autorTipo,
+    autorNombre,
+    mensaje: texto,
+    fecha: new Date().toISOString(),
+  };
+  return actualizarReporte(id, { seguimiento: [...(reporte.seguimiento ?? []), seguimiento] });
 }
 
 export function obtenerReportesPorUnidad(unidadId) {

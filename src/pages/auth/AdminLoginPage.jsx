@@ -13,7 +13,7 @@ import logoCfe from "../../assets/logo-cfe.png";
 function AdminLoginPage() {
   const [usuario, setUsuario] = useState("");
   const [password, setPassword] = useState("");
-  const [recordarSesion, setRecordarSesion] = useState(false);
+  const [mostrarPassword, setMostrarPassword] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [errorMensaje, setErrorMensaje] = useState("");
   const { loginAdmin } = useAuth();
@@ -24,8 +24,8 @@ function AdminLoginPage() {
     setErrorMensaje("");
     setIsLoading(true);
     try {
-      await loginAdmin({ usuario, password }, recordarSesion);
-      navigate("/admin");
+      const sesion = await loginAdmin({ usuario, password });
+      navigate(sesion.usuario.debeCambiarPassword ? "/cambiar-contrasena" : "/dashboard", { replace: true });
     } catch (error) {
       setErrorMensaje(error.message);
     } finally {
@@ -34,16 +34,16 @@ function AdminLoginPage() {
   }
 
   return (
-    <div className="bg-inverse-surface min-h-screen flex items-center justify-center p-6">
-      <div className="w-full max-w-md bg-[#1a1a1a] border border-[#d4af37]/30 rounded-xl shadow-2xl p-8 space-y-6">
+    <div className="bg-background min-h-screen flex items-center justify-center p-6">
+      <div className="w-full max-w-md bg-[#1a1a1a] border border-[#A79F92]/40 rounded-xl shadow-2xl p-8 space-y-6">
         <img src={logoCfe} alt="Comisión Federal de Electricidad" className="w-32 mx-auto brightness-0 invert opacity-90" />
         <div className="flex items-center gap-3">
-          <div className="w-12 h-12 rounded-full bg-[#d4af37]/10 border border-[#d4af37]/40 flex items-center justify-center">
-            <span className="material-symbols-outlined text-[#d4af37]">shield_person</span>
+          <div className="w-12 h-12 rounded-full bg-[#A79F92]/15 border border-[#A79F92]/60 flex items-center justify-center">
+            <span className="material-symbols-outlined text-[#CBBD93]">shield_person</span>
           </div>
           <div>
             <h1 className="font-headline-lg text-headline-lg text-white">SuperAdministrador</h1>
-            <p className="font-label-sm text-label-sm text-[#d4af37] uppercase tracking-wider">Acceso restringido</p>
+            <p className="font-label-sm text-label-sm text-[#CBBD93] uppercase tracking-wider">Acceso restringido</p>
           </div>
         </div>
 
@@ -55,7 +55,7 @@ function AdminLoginPage() {
 
         <form className="space-y-5" onSubmit={handleSubmit}>
           <div className="space-y-2">
-            <label className="block font-label-sm text-label-sm text-[#d4af37]/80 uppercase tracking-wider" htmlFor="admin-usuario">
+            <label className="block font-label-sm text-label-sm text-[#A79F92] uppercase tracking-wider" htmlFor="admin-usuario">
               Usuario
             </label>
             <input
@@ -64,48 +64,40 @@ function AdminLoginPage() {
               required
               value={usuario}
               onChange={(event) => setUsuario(event.target.value)}
-              className="block w-full px-4 py-3 border border-[#d4af37]/20 rounded-lg bg-[#0f0f0f] text-white font-body-md focus:outline-none focus:border-[#d4af37] focus:ring-1 focus:ring-[#d4af37] transition-all"
+              className="block w-full px-4 py-3 border border-[#A79F92]/30 rounded-lg bg-[#0f0f0f] text-white font-body-md focus:outline-none focus:border-[#CBBD93] focus:ring-1 focus:ring-[#CBBD93] transition-all"
             />
           </div>
           <div className="space-y-2">
             <div className="flex justify-between items-center">
-              <label className="block font-label-sm text-label-sm text-[#d4af37]/80 uppercase tracking-wider" htmlFor="admin-password">
+              <label className="block font-label-sm text-label-sm text-[#A79F92] uppercase tracking-wider" htmlFor="admin-password">
                 Contraseña
               </label>
-              <Link to="/recuperar-contrasena" className="font-label-sm text-label-sm text-[#d4af37] hover:text-white transition-colors">
-                ¿Olvidó su contraseña?
-              </Link>
             </div>
+            <div className="relative">
             <input
               id="admin-password"
-              type="password"
+              type={mostrarPassword ? "text" : "password"}
               required
               value={password}
               onChange={(event) => setPassword(event.target.value)}
-              className="block w-full px-4 py-3 border border-[#d4af37]/20 rounded-lg bg-[#0f0f0f] text-white font-body-md focus:outline-none focus:border-[#d4af37] focus:ring-1 focus:ring-[#d4af37] transition-all"
+              className="block w-full px-4 py-3 border border-[#A79F92]/30 rounded-lg bg-[#0f0f0f] text-white font-body-md focus:outline-none focus:border-[#CBBD93] focus:ring-1 focus:ring-[#CBBD93] transition-all"
             />
+            <button type="button" aria-label={mostrarPassword ? "Ocultar contraseña" : "Mostrar contraseña"} onClick={() => setMostrarPassword((visible) => !visible)} className="absolute right-2 top-1/2 -translate-y-1/2 p-2 text-[#CBBD93]">
+              <span className="material-symbols-outlined">{mostrarPassword ? "visibility_off" : "visibility"}</span>
+            </button>
+            </div>
           </div>
-
-          <label className="flex items-center gap-2 cursor-pointer select-none">
-            <input
-              type="checkbox"
-              checked={recordarSesion}
-              onChange={(event) => setRecordarSesion(event.target.checked)}
-              className="w-4 h-4 rounded border-[#d4af37]/40 text-[#d4af37] focus:ring-[#d4af37]"
-            />
-            <span className="font-body-md text-body-md text-white/70">Recordar sesión en este dispositivo</span>
-          </label>
 
           <button
             type="submit"
             disabled={isLoading}
-            className="w-full py-3 rounded-lg bg-[#d4af37] text-[#1a1a1a] font-label-sm text-label-sm uppercase tracking-wider hover:bg-[#e0c158] transition-colors disabled:opacity-60"
+            className="w-full py-3 rounded-lg bg-[#CBBD93] text-[#1a1a1a] font-label-sm text-label-sm uppercase tracking-wider hover:bg-[#A79F92] transition-colors disabled:opacity-60"
           >
             {isLoading ? "Verificando…" : "Ingresar"}
           </button>
         </form>
 
-        <Link to="/" className="block text-center font-label-sm text-label-sm text-white/50 hover:text-[#d4af37] transition-colors">
+        <Link to="/" className="block text-center font-label-sm text-label-sm text-white/50 hover:text-[#CBBD93] transition-colors">
           Volver al acceso general
         </Link>
       </div>

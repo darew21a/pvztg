@@ -1,5 +1,5 @@
 import { jsPDF } from "jspdf";
-import { LOGO_CFE_BASE64 } from "../assets/logoCfeBase64.js";
+import { obtenerLogoCfeBase64 } from "./logoCfe.js";
 
 /**
  * ============================================================================
@@ -53,19 +53,21 @@ const ETIQUETAS_SINIESTRO = {
  * @param {Array<Object>} unidades  Las unidades completas incluidas en el reporte (para imprimir sus datos).
  * @returns {string} URL del PDF generado.
  */
-export function generarPdfReporte(reporte, unidades) {
+export async function generarPdfReporte(reporte, unidades) {
+  const logoCfeBase64 = await obtenerLogoCfeBase64();
   const documento = new jsPDF({ unit: "mm", format: "letter" });
   const anchoPagina = documento.internal.pageSize.getWidth();
   const altoPagina = documento.internal.pageSize.getHeight();
   const textoTipo = TEXTOS_POR_TIPO[reporte.tipoReporte];
 
   dibujarMarcaDeAgua(documento, anchoPagina, altoPagina);
-  dibujarMembretado(documento, anchoPagina, reporte, textoTipo);
+  dibujarMembretado(documento, anchoPagina, reporte, textoTipo, logoCfeBase64);
 
   let y = 55;
-  y = escribirParrafo(documento, textoTipo.introduccion, y, anchoPagina);
+  y = escribirParrafo(documento, textoTipo.introduccion, y, anchoPagina, altoPagina, reporte, textoTipo, logoCfeBase64);
 
   if (reporte.tipoReporte === "siniestro" && reporte.detalleSiniestro) {
+    y = asegurarEspacio(documento, y, 10, altoPagina, anchoPagina, reporte, textoTipo, logoCfeBase64);
     y += 4;
     documento.setFont("helvetica", "bold");
     documento.text(`Tipo de siniestro: ${ETIQUETAS_SINIESTRO[reporte.detalleSiniestro] ?? reporte.detalleSiniestro}`, 20, y);
@@ -74,6 +76,7 @@ export function generarPdfReporte(reporte, unidades) {
   }
 
   if (reporte.gravedad) {
+    y = asegurarEspacio(documento, y, 10, altoPagina, anchoPagina, reporte, textoTipo, logoCfeBase64);
     documento.setFont("helvetica", "bold");
     documento.text(`Nivel de gravedad: ${reporte.gravedad.toUpperCase()}`, 20, y);
     documento.setFont("helvetica", "normal");
@@ -81,6 +84,7 @@ export function generarPdfReporte(reporte, unidades) {
   }
 
   if (reporte.involucrados) {
+    y = asegurarEspacio(documento, y, 10, altoPagina, anchoPagina, reporte, textoTipo, logoCfeBase64);
     documento.setFont("helvetica", "bold");
     documento.text(`Involucrados: ${reporte.involucrados}`, 20, y);
     documento.setFont("helvetica", "normal");
@@ -88,6 +92,7 @@ export function generarPdfReporte(reporte, unidades) {
   }
 
   if (reporte.fechaHechos) {
+    y = asegurarEspacio(documento, y, 10, altoPagina, anchoPagina, reporte, textoTipo, logoCfeBase64);
     documento.setFont("helvetica", "bold");
     documento.text(`Fecha de los hechos: ${new Date(reporte.fechaHechos).toLocaleDateString("es-MX", { day: "2-digit", month: "2-digit", year: "numeric" })}`, 20, y);
     documento.setFont("helvetica", "normal");
@@ -95,6 +100,7 @@ export function generarPdfReporte(reporte, unidades) {
   }
 
   if (reporte.lugarHechos) {
+    y = asegurarEspacio(documento, y, 10, altoPagina, anchoPagina, reporte, textoTipo, logoCfeBase64);
     documento.setFont("helvetica", "bold");
     documento.text(`Lugar: ${reporte.lugarHechos}`, 20, y);
     documento.setFont("helvetica", "normal");
@@ -102,12 +108,14 @@ export function generarPdfReporte(reporte, unidades) {
   }
 
   if (reporte.horarioHechos) {
+    y = asegurarEspacio(documento, y, 10, altoPagina, anchoPagina, reporte, textoTipo, logoCfeBase64);
     documento.setFont("helvetica", "bold");
     documento.text(`Horario: ${reporte.horarioHechos}`, 20, y);
     documento.setFont("helvetica", "normal");
     y += 8;
   }
 
+  y = asegurarEspacio(documento, y, 12, altoPagina, anchoPagina, reporte, textoTipo, logoCfeBase64);
   y += 4;
   documento.setFont("helvetica", "bold");
   documento.text("Unidad(es) reportada(s):", 20, y);
@@ -115,29 +123,39 @@ export function generarPdfReporte(reporte, unidades) {
   y += 7;
 
   unidades.forEach((unidad) => {
-    documento.text(
-      `• Económico ${unidad.economico ?? "s/asignar"} - ${unidad.marca ?? ""} ${unidad.submarca ?? ""} - Placas: ${unidad.placas ?? "s/placa"}`,
-      24,
+    y = escribirParrafo(
+      documento,
+      `- Económico ${unidad.economico ?? "s/asignar"} - ${unidad.marca ?? ""} ${unidad.submarca ?? ""} - Placas: ${unidad.placas ?? "s/placa"}`,
       y,
+      anchoPagina - 8,
+      altoPagina,
+      reporte,
+      textoTipo,
+      logoCfeBase64,
     );
-    y += 6;
   });
 
+  y = asegurarEspacio(documento, y, 12, altoPagina, anchoPagina, reporte, textoTipo, logoCfeBase64);
   y += 6;
   documento.setFont("helvetica", "bold");
   documento.text("Descripción detallada:", 20, y);
   documento.setFont("helvetica", "normal");
   y += 7;
-  y = escribirParrafo(documento, reporte.descripcion, y, anchoPagina);
+  y = escribirParrafo(documento, reporte.descripcion, y, anchoPagina, altoPagina, reporte, textoTipo, logoCfeBase64);
 
+  if (y > altoPagina - 48) {
+    documento.addPage();
+    dibujarMarcaDeAgua(documento, anchoPagina, altoPagina);
+    dibujarMembretado(documento, anchoPagina, reporte, textoTipo, logoCfeBase64);
+  }
   dibujarPieDeFirma(documento, reporte, altoPagina);
 
   return documento.output("bloburl").toString();
 }
 
 /** Membretado superior: logo, folio y fecha/hora exacta. */
-function dibujarMembretado(documento, anchoPagina, reporte, textoTipo) {
-  documento.addImage(LOGO_CFE_BASE64, "PNG", 20, 12, 28, 10);
+function dibujarMembretado(documento, anchoPagina, reporte, textoTipo, logoCfeBase64) {
+  documento.addImage(logoCfeBase64, "PNG", 20, 12, 28, 10);
 
   documento.setFontSize(9);
   documento.setFont("helvetica", "normal");
@@ -177,11 +195,25 @@ function dibujarMarcaDeAgua(documento, anchoPagina, altoPagina) {
   documento.setTextColor(0, 0, 0);
 }
 
-/** Escribe un párrafo con salto de línea automático y regresa la posición Y siguiente. */
-function escribirParrafo(documento, texto, y, anchoPagina) {
+function asegurarEspacio(documento, y, altoNecesario, altoPagina, anchoPagina, reporte, textoTipo, logoCfeBase64) {
+  if (y + altoNecesario <= altoPagina - 48) return y;
+  documento.addPage();
+  dibujarMarcaDeAgua(documento, anchoPagina, altoPagina);
+  dibujarMembretado(documento, anchoPagina, reporte, textoTipo, logoCfeBase64);
+  documento.setFontSize(10);
+  documento.setFont("helvetica", "normal");
+  return 58;
+}
+
+/** Escribe un párrafo paginado y regresa la posición Y siguiente. */
+function escribirParrafo(documento, texto, y, anchoPagina, altoPagina, reporte, textoTipo, logoCfeBase64) {
   const lineas = documento.splitTextToSize(texto ?? "", anchoPagina - 40);
-  documento.text(lineas, 20, y);
-  return y + lineas.length * 5.5 + 4;
+  lineas.forEach((linea) => {
+    y = asegurarEspacio(documento, y, 6, altoPagina, anchoPagina, reporte, textoTipo, logoCfeBase64);
+    documento.text(linea, 20, y);
+    y += 5.5;
+  });
+  return y + 4;
 }
 
 /** Pie de página con línea de firma y aviso de confidencialidad. */

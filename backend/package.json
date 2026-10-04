@@ -1,0 +1,31 @@
+{
+  "name": "pvztg-backend",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "node --watch src/server.js",
+    "start": "node src/server.js",
+    "test": "node --test",
+    "test:integration": "node --test test/integration.test.js",
+    "db:migrate": "node src/db/migrate.js",
+    "db:backup": "node src/db/backup.js",
+    "db:restore": "node src/db/restore.js",
+    "db:validate-backup": "node src/db/validateBackup.js",
+    "release:check": "node src/config/releaseCheck.js",
+    "db:seed": "node src/db/seed.js",
+    "db:seed:units": "node src/db/seed-unidades.js"
+  },
+  "dependencies": {
+    "bcryptjs": "^3.0.0",
+    "cors": "^2.8.5",
+    "dotenv": "^16.4.5",
+    "express": "^4.21.2",
+    "jsonwebtoken": "^9.0.3",
+    "multer": "^2.4.0",
+    "mysql2": "^3.4.5"
+  },
+  "devDependencies": {
+    "supertest": "^7.1.4"
+  }
+}

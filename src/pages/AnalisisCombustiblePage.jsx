@@ -5,8 +5,9 @@ import { useUnidades } from "../hooks/useUnidades.js";
 import { useFiltrosFlota, useEstadoFiltrosFlota } from "../hooks/useFiltrosFlota.js";
 import { useEjercicioFiscal } from "../hooks/useEjercicioFiscal.js";
 import { generarPdfCierreAnual } from "../utils/generarPdfCierreAnual.js";
+import { mostrarPdfGenerado } from "../utils/mostrarPdfGenerado.js";
 import SelectorAnioFiscal from "../components/flota/SelectorAnioFiscal.jsx";
-import { useSearch } from "../context/SearchContext.jsx";
+import { useSearch } from "../context/useSearch.js";
 import { coincideBusqueda } from "../utils/coincideBusqueda.js";
 
 /**
@@ -37,7 +38,7 @@ function AnalisisCombustiblePage() {
 
   return (
     <>
-      <TopNavBar activeTab="Alertas" searchPlaceholder="Buscar unidad..." />
+      <TopNavBar searchPlaceholder="Buscar unidad..." />
       <div className="p-margin-desktop flex-1 space-y-6">
         <div>
           <h1 className="font-headline-lg text-headline-lg text-on-surface">Análisis de Combustible por Unidad</h1>
@@ -90,13 +91,12 @@ function AnalisisDeUnaUnidad({ unidad, onCambiarUnidad }) {
   const rendimientoPromedio = totales.litros > 0 ? (totales.km / totales.litros).toFixed(1) : null;
 
   function handleDescargarPdf() {
-    const url = generarPdfCierreAnual({
+    const nombreArchivo = `cierre-unidad-${unidad.economico ?? unidad.id}-${ejercicioFiscal.anioSeleccionado}.pdf`;
+    return mostrarPdfGenerado(() => generarPdfCierreAnual({
       anio: ejercicioFiscal.anioSeleccionado,
       titulo: `Económico ${unidad.economico ?? "s/e"} - ${unidad.marca ?? ""} ${unidad.submarca ?? ""} (${unidad.placas ?? "s/placa"})`,
       mesesDelAnio,
-      totales,
-    });
-    window.open(url, "_blank");
+    }), nombreArchivo);
   }
 
   return (
@@ -130,7 +130,7 @@ function AnalisisDeUnaUnidad({ unidad, onCambiarUnidad }) {
         <TarjetaTotal etiqueta="Rendimiento promedio" valor={rendimientoPromedio ? `${rendimientoPromedio} km/L` : "Sin datos"} />
       </div>
 
-      <div className="bg-surface-container-lowest border border-outline-variant rounded-lg overflow-hidden">
+      <div className="table-scroll custom-scrollbar" role="region" tabIndex={0} aria-label="Consumo mensual de combustible desplazable">
         <table className="w-full text-left text-sm">
           <thead className="bg-surface-container-high font-label-sm text-label-sm text-on-surface-variant uppercase">
             <tr>

@@ -1,3 +1,7 @@
+import { useMemo } from "react";
+import { obtenerAniosDisponibles } from "../../hooks/useEjercicioFiscal.js";
+import GlowButton from "../ui/GlowButton.jsx";
+
 /**
  * Selector de año fiscal + botón "Descargar PDF" del cierre del año que
  * se está viendo. Se usa igual en el Dashboard (flota completa) y en el
@@ -11,6 +15,8 @@
  * @param {() => void} props.onDescargarPdf
  */
 function SelectorAnioFiscal({ anioSeleccionado, setAnioSeleccionado, aniosDisponibles, esAnioActual, onDescargarPdf }) {
+  const opcionesDeAnio = useMemo(() => obtenerAniosDisponibles(aniosDisponibles), [aniosDisponibles]);
+
   return (
     <div className="flex items-center gap-3 flex-wrap">
       <div className="flex items-center gap-2">
@@ -20,7 +26,7 @@ function SelectorAnioFiscal({ anioSeleccionado, setAnioSeleccionado, aniosDispon
           onChange={(event) => setAnioSeleccionado(Number(event.target.value))}
           className="px-3 py-1.5 border border-outline-variant rounded-md bg-surface-bright text-sm font-medium"
         >
-          {aniosDisponibles.map((anio) => (
+          {opcionesDeAnio.map((anio) => (
             <option key={anio} value={anio}>{anio}</option>
           ))}
         </select>
@@ -30,13 +36,12 @@ function SelectorAnioFiscal({ anioSeleccionado, setAnioSeleccionado, aniosDispon
           </span>
         )}
       </div>
-      <button
+      <GlowButton
         onClick={onDescargarPdf}
-        className="px-3 py-1.5 border border-outline-variant rounded-md text-on-surface-variant font-label-sm text-label-sm hover:bg-surface transition-colors flex items-center gap-1"
       >
         <span className="material-symbols-outlined text-[16px]">picture_as_pdf</span>
         Descargar PDF {anioSeleccionado}
-      </button>
+      </GlowButton>
     </div>
   );
 }

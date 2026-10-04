@@ -1,4 +1,5 @@
-import { useMemo, useState, useCallback } from "react";
+import { useEffect, useMemo, useRef, useState, useCallback } from "react";
+import { useActualYear } from "./useEjercicioFiscal.js";
 
 /**
  * ============================================================================
@@ -43,15 +44,44 @@ function normalizar(valor) {
  * @returns {{ filtros: Object, setFiltro: Function, limpiarFiltros: Function }}
  */
 export function useEstadoFiltrosFlota() {
-  const [filtros, setFiltros] = useState({ placa: "", economico: "", departamento: "", anio: "", mes: "", dia: "", hora: "" });
+  const anioActual = useActualYear();
+  const anioAnterior = useRef(anioActual);
+  const [filtros, setFiltros] = useState(() => ({
+    placa: "",
+    economico: "",
+    departamento: "",
+    anio: String(anioActual),
+    mes: "",
+    dia: "",
+    hora: "",
+  }));
+
+  useEffect(() => {
+    const anioPrevio = anioAnterior.current;
+    if (anioPrevio === anioActual) return;
+    anioAnterior.current = anioActual;
+    setFiltros((actuales) => (
+      actuales.anio === String(anioPrevio)
+        ? { ...actuales, anio: String(anioActual) }
+        : actuales
+    ));
+  }, [anioActual]);
 
   const setFiltro = useCallback((campo, valor) => {
     setFiltros((anteriores) => ({ ...anteriores, [campo]: valor }));
   }, []);
 
   const limpiarFiltros = useCallback(() => {
-    setFiltros({ placa: "", economico: "", departamento: "", anio: "", mes: "", dia: "", hora: "" });
-  }, []);
+    setFiltros({
+      placa: "",
+      economico: "",
+      departamento: "",
+      anio: String(anioActual),
+      mes: "",
+      dia: "",
+      hora: "",
+    });
+  }, [anioActual]);
 
   return { filtros, setFiltro, limpiarFiltros };
 }

@@ -1,5 +1,7 @@
 import { jsPDF } from "jspdf";
-import { LOGO_CFE_BASE64 } from "../assets/logoCfeBase64.js";
+import { formatearFechaHora } from "./formatearFecha.js";
+import { obtenerLogoCfeBase64 } from "./logoCfe.js";
+import { calcularTotalesEjercicio, normalizarMesesEjercicio } from "./normalizarMesesEjercicio.js";
 
 /**
  * PDF de cierre de ejercicio fiscal - pensado para generarse el 31 de
@@ -10,15 +12,17 @@ import { LOGO_CFE_BASE64 } from "../assets/logoCfeBase64.js";
  *   anio: number,
  *   titulo: string,            "Flota Vehicular Completa" o "Económico 23002762 - NISSAN FRONTIER".
  *   mesesDelAnio: Array<{ mes: string, km: number, litros: number, importe: number }>,
- *   totales: { km: number, litros: number, importe: number },
  * }} datos
  * @returns {string} URL del PDF generado, lista para descargar.
  */
-export function generarPdfCierreAnual({ anio, titulo, mesesDelAnio, totales }) {
+export async function generarPdfCierreAnual({ anio, titulo, mesesDelAnio }) {
+  const mesesOrdenados = normalizarMesesEjercicio(mesesDelAnio, anio);
+  const totales = calcularTotalesEjercicio(mesesOrdenados);
+  const logoCfeBase64 = await obtenerLogoCfeBase64();
   const documento = new jsPDF({ unit: "mm", format: "letter" });
   const anchoPagina = documento.internal.pageSize.getWidth();
 
-  documento.addImage(LOGO_CFE_BASE64, "PNG", 20, 12, 28, 10);
+  documento.addImage(logoCfeBase64, "PNG", 20, 12, 28, 10);
   documento.setFontSize(9);
   documento.text("Comisión Federal de Electricidad - Transmisión Zona Guerrero", anchoPagina - 20, 15, { align: "right" });
   documento.text("Sistema PV-ZTG · Cierre de Ejercicio Fiscal", anchoPagina - 20, 20, { align: "right" });
@@ -47,7 +51,7 @@ export function generarPdfCierreAnual({ anio, titulo, mesesDelAnio, totales }) {
   y += 6;
   documento.text(`Importe total: $${totales.importe.toLocaleString("es-MX", { minimumFractionDigits: 2 })}`, 24, y);
 
-  // Desglose mensual (12 filas, enero a diciembre, tal como las regresa useEjercicioFiscal).
+  // Desglose anual completo, normalizado de enero a diciembre.
   y += 12;
   documento.setFont("helvetica", "bold");
   documento.text("Mes", 20, y);
@@ -59,8 +63,8 @@ export function generarPdfCierreAnual({ anio, titulo, mesesDelAnio, totales }) {
   documento.line(20, y, anchoPagina - 20, y);
   y += 6;
 
-  mesesDelAnio.forEach((registro) => {
-    documento.text(registro.mes, 20, y);
+  mesesOrdenados.forEach((registro) => {
+    documento.text(registro.nombre, 20, y);
     documento.text(registro.km.toLocaleString("es-MX"), 90, y, { align: "right" });
     documento.text(registro.litros.toLocaleString("es-MX"), 130, y, { align: "right" });
     documento.text(`$${registro.importe.toLocaleString("es-MX", { minimumFractionDigits: 2 })}`, 180, y, { align: "right" });
@@ -70,7 +74,7 @@ export function generarPdfCierreAnual({ anio, titulo, mesesDelAnio, totales }) {
   documento.setFontSize(7.5);
   documento.setTextColor(120, 120, 120);
   documento.text(
-    `Generado automáticamente por el Sistema PV-ZTG el ${new Date().toLocaleString("es-MX")}.`,
+    `Generado automáticamente por el Sistema PV-ZTG el ${formatearFechaHora(new Date())}.`,
     20,
     documento.internal.pageSize.getHeight() - 12,
   );

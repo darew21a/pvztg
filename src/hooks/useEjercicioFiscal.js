@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 
 /**
  * ============================================================================
@@ -11,11 +11,9 @@ import { useMemo, useState } from "react";
  * regresa SOLO los 12 meses del año seleccionado, con los meses faltantes
  * rellenados en cero - nunca mezcla dos años en el mismo total.
  *
- * "Reinicio automático" del 1 de enero: no existe código especial de
- * reseteo. `anioActual` se calcula con `new Date().getFullYear()` en cada
- * carga, así que en cuanto cambia el año del sistema, el hook
- * automáticamente parte de un año sin datos (ceros) - la data histórica
- * sigue intacta en la unidad, solo que ya no es "el año en curso".
+ * El año actual se vuelve a comprobar al cambiar de año, incluso si la
+ * pantalla permanece abierta. La selección que estaba en el año actual
+ * avanza al nuevo año; una selección histórica intencional se conserva.
  * ============================================================================
  */
 
@@ -32,19 +30,23 @@ import { useMemo, useState } from "react";
  * }}
  */
 export function useEjercicioFiscal(historial) {
-  const anioActual = new Date().getFullYear();
+  const anioActual = useActualYear();
   const [anioSeleccionado, setAnioSeleccionado] = useState(anioActual);
+  const anioActualAnterior = useRef(anioActual);
 
-  const historialSeguro = historial ?? [];
+  const historialSeguro = historial ?? EMPTY_ARRAY;
 
-  // El año en curso siempre aparece como opción, aunque todavía no tenga
-  // ni un solo mes con datos - así el Select nunca se queda "vacío" el
-  // 1 de enero mientras no ha llegado el primer reporte del año nuevo.
   const aniosDisponibles = useMemo(() => {
-    const anios = new Set(historialSeguro.map((registro) => Number(registro.mes.slice(0, 4))));
-    anios.add(anioActual);
-    return [...anios].sort((a, b) => b - a); // más reciente primero
+    return obtenerAniosDisponibles(historialSeguro.map((registro) => Number(registro.mes.slice(0, 4))), anioActual);
   }, [historialSeguro, anioActual]);
+
+  useEffect(() => {
+    const anioAnterior = anioActualAnterior.current;
+    if (anioAnterior !== anioActual) {
+      anioActualAnterior.current = anioActual;
+      setAnioSeleccionado((seleccionado) => (seleccionado === anioAnterior ? anioActual : seleccionado));
+    }
+  }, [anioActual]);
 
   const mesesDelAnio = useMemo(
     () =>
@@ -78,3 +80,38 @@ export function useEjercicioFiscal(historial) {
     esAnioActual: anioSeleccionado === anioActual,
   };
 }
+
+export function useActualYear() {
+  const [revisionAnual, setRevisionAnual] = useState(0);
+  const anioActual = new Date().getFullYear();
+
+  useEffect(() => {
+    const milisegundosHastaProximoAnio = new Date(anioActual + 1, 0, 1).getTime() - Date.now();
+    const demora = Math.min(Math.max(milisegundosHastaProximoAnio + 50, 50), MAX_TIMEOUT);
+    const timeout = setTimeout(() => setRevisionAnual((revision) => revision + 1), demora);
+    return () => clearTimeout(timeout);
+  }, [anioActual, revisionAnual]);
+
+  return anioActual;
+}
+
+/**
+ * Muestra los años desde el inicio del sistema hasta el actual, además de
+ * cualquier año con registros históricos. Así no se anuncian años futuros
+ * vacíos y los ejercicios nuevos se van agregando al avanzar el calendario.
+ */
+export function obtenerAniosDisponibles(aniosRegistrados = [], anioActual = new Date().getFullYear()) {
+  const anioInicial = Math.min(ANIO_INICIO_SISTEMA, anioActual);
+  const anios = new Set();
+  for (let anio = anioInicial; anio <= anioActual; anio += 1) {
+    anios.add(anio);
+  }
+  aniosRegistrados.forEach((anio) => {
+    if (Number.isInteger(anio)) anios.add(anio);
+  });
+  return [...anios].sort((a, b) => b - a);
+}
+
+const EMPTY_ARRAY = [];
+const ANIO_INICIO_SISTEMA = 2026;
+const MAX_TIMEOUT = 2_147_000_000;

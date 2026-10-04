@@ -9,7 +9,7 @@ import AuthContext from "../context/AuthContext.jsx";
  * @returns {{
  *   usuario: object | null,
  *   token: string | null,
- *   rol: "administrador" | "superadmin" | "jefe-departamento" | null,
+ *   rol: "apv" | "stt" | "jefe-departamento" | null,
  *   isAuthenticated: boolean,
  *   isLoading: boolean,
  *   login: Function,

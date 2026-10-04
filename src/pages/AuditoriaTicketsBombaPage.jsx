@@ -1,4 +1,5 @@
-import { useMemo } from "react";
+import { useEffect, useMemo } from "react";
+import { useSearchParams } from "react-router-dom";
 import TopNavBar from "../components/layout/TopNavBar.jsx";
 import BarraFiltrosFlota from "../components/flota/BarraFiltrosFlota.jsx";
 import TablaColumnasDinamicas from "../components/flota/TablaColumnasDinamicas.jsx";
@@ -6,7 +7,9 @@ import { useUnidades } from "../hooks/useUnidades.js";
 import { useTicketsCombustible } from "../hooks/useTicketsCombustible.js";
 import { useFiltrosFlota, useEstadoFiltrosFlota } from "../hooks/useFiltrosFlota.js";
 import { obtenerNombreDepartamento } from "../data/departamentosStore.js";
-import { useSearch } from "../context/SearchContext.jsx";
+import { useSearch } from "../context/useSearch.js";
+import { formatearFechaHora } from "../utils/formatearFecha.js";
+import EnlaceDescargaProtegida from "../components/ui/EnlaceDescargaProtegida.jsx";
 
 /**
  * ============================================================================
@@ -24,6 +27,7 @@ function AuditoriaTicketsBombaPage() {
   const unidades = useUnidades();
   const tickets = useTicketsCombustible();
   const { query } = useSearch();
+  const [searchParams, setSearchParams] = useSearchParams();
   const { filtros, setFiltro, limpiarFiltros } = useEstadoFiltrosFlota();
 
   // Índice rápido unidadId -> unidad, para no buscar en el arreglo por cada ticket.
@@ -40,7 +44,20 @@ function AuditoriaTicketsBombaPage() {
     [unidadesPorId],
   );
 
-  const ticketsFiltrados = useFiltrosFlota(tickets, filtros, extractores);
+  const ticketSeleccionadoId = searchParams.get("ticket");
+  const ticketsObjetivo = ticketSeleccionadoId ? tickets.filter((ticket) => ticket.id === ticketSeleccionadoId) : tickets;
+  const ticketsFiltrados = useFiltrosFlota(ticketsObjetivo, filtros, extractores);
+
+  useEffect(() => {
+    const ticketSeleccionado = tickets.find((ticket) => ticket.id === ticketSeleccionadoId);
+    if (ticketSeleccionado) {
+      setFiltro("anio", String(new Date(ticketSeleccionado.fechaHora).getFullYear()));
+    }
+  }, [ticketSeleccionadoId, tickets, setFiltro]);
+
+  useEffect(() => {
+    if (ticketSeleccionadoId && tickets.some((ticket) => ticket.id === ticketSeleccionadoId)) setSearchParams({}, { replace: true });
+  }, [searchParams, setSearchParams, ticketSeleccionadoId, tickets]);
 
   const aniosDisponibles = useMemo(
     () => [...new Set(tickets.map((ticket) => new Date(ticket.fechaHora).getFullYear()))].sort(),
@@ -56,7 +73,7 @@ function AuditoriaTicketsBombaPage() {
         label: "Departamento",
         render: (t) => obtenerNombreDepartamento(unidadesPorId.get(t.unidadId)?.departamento),
       },
-      { key: "fechaHora", label: "Fecha y hora", render: (t) => new Date(t.fechaHora).toLocaleString("es-MX") },
+      { key: "fechaHora", label: "Fecha y hora", render: (t) => formatearFechaHora(t.fechaHora) },
       { key: "litros", label: "Litros", alinearDerecha: true, render: (t) => t.litros.toLocaleString("es-MX") },
       { key: "importe", label: "Importe", alinearDerecha: true, render: (t) => `$${t.importe.toLocaleString("es-MX", { minimumFractionDigits: 2 })}` },
       { key: "subidoPor", label: "Subido por" },
@@ -65,9 +82,15 @@ function AuditoriaTicketsBombaPage() {
         label: "Comprobantes",
         render: (t) => (
           <div className="flex gap-2">
-            <EnlaceDescarga url={t.urlTicketBomba} etiqueta="Bomba" />
-            <EnlaceDescarga url={t.urlTicketEdenred} etiqueta="Edenred" />
-            <EnlaceDescarga url={t.urlPdfFusionado} etiqueta="PDF" />
+            <EnlaceDescargaProtegida url={t.urlTicketBomba} nombre="Bomba" className="text-primary hover:underline text-xs flex items-center gap-0.5">
+              <span className="material-symbols-outlined text-[14px]">download</span>Bomba
+            </EnlaceDescargaProtegida>
+            <EnlaceDescargaProtegida url={t.urlTicketEdenred} nombre="Edenred" className="text-primary hover:underline text-xs flex items-center gap-0.5">
+              <span className="material-symbols-outlined text-[14px]">download</span>Edenred
+            </EnlaceDescargaProtegida>
+            <EnlaceDescargaProtegida url={t.urlPdfFusionado} nombre="PDF" className="text-primary hover:underline text-xs flex items-center gap-0.5">
+              <span className="material-symbols-outlined text-[14px]">download</span>PDF
+            </EnlaceDescargaProtegida>
           </div>
         ),
       },
@@ -77,12 +100,12 @@ function AuditoriaTicketsBombaPage() {
 
   return (
     <>
-      <TopNavBar activeTab="Alertas" searchPlaceholder="Buscar recarga..." />
+      <TopNavBar searchPlaceholder="Buscar recarga..." />
       <div className="p-margin-desktop flex-1 space-y-6">
         <div>
           <h1 className="font-headline-lg text-headline-lg text-on-surface">Auditoría Global de Tickets Bomba</h1>
           <p className="font-body-md text-body-md text-on-surface-variant mt-1">
-            {tickets.length} recarga(s) registradas por todos los departamentos.
+            {ticketsObjetivo.length === 1 && ticketSeleccionadoId ? "Recarga localizada" : `${tickets.length} recarga(s) registradas por todos los departamentos.`}
           </p>
         </div>
 
@@ -101,18 +124,6 @@ function AuditoriaTicketsBombaPage() {
         <TablaColumnasDinamicas filas={ticketsFiltrados} columnas={columnas} obtenerLlave={(ticket) => ticket.id} searchQuery={query} resaltarFilas={Object.values(filtros).some(Boolean)} />
       </div>
     </>
-  );
-}
-
-function EnlaceDescarga({ url, etiqueta }) {
-  if (!url) {
-    return <span className="text-outline-variant text-xs">{etiqueta}</span>;
-  }
-  return (
-    <a href={url} download className="text-primary hover:underline text-xs flex items-center gap-0.5">
-      <span className="material-symbols-outlined text-[14px]">download</span>
-      {etiqueta}
-    </a>
   );
 }
 

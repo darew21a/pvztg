@@ -1,91 +1,135 @@
-/**
- * ============================================================================
- * ÍNDICE DE COLORES DE UNIDAD (MÓDULO 1)
- * ============================================================================
- * Una sola función, totalmente desacoplada de la UI, que evalúa el estado
- * de una unidad contra el resto de la flota y los reportes activos, y
- * regresa UN color - el de mayor prioridad si la unidad cumple varias
- * condiciones a la vez. Cuando exista el backend, esta misma función se
- * reutiliza tal cual (recibe datos planos, no depende de React).
- *
- * Jerarquía de prioridad (de más a menos crítico):
- *   1. Naranja  - anomalía de integridad de datos (VIN o placa duplicados
- *                 con otra unidad). Es lo más grave: si esto está mal, no
- *                 se puede confiar en el resto de los datos de la unidad.
- *   2. Rojo     - tiene reportes activos (anomalía/mantenimiento/siniestro
- *                 levantados por un Jefe de Departamento). Ya se sabe que
- *                 algo concreto está pasando con la unidad.
- *   3. Amarillo - sin departamento asignado. Falta administrativa: nadie
- *                 la está viendo desde el panel de Jefe de Departamento.
- *   4. Azul     - sin número económico. La unidad existe pero no está
- *                 dada de alta formalmente (por eso ni siquiera aparece
- *                 en el Buscador de Flota, que ya filtra por esto).
- *   (sin color) - todo en orden.
- * ============================================================================
- */
-
-export const COLORES_UNIDAD = {
-  ANOMALIA: "naranja",
-  CON_REPORTES: "rojo",
-  SIN_DEPARTAMENTO: "amarillo",
-  SIN_ECONOMICO: "azul",
-  OK: null,
-};
-
-/** Clases Tailwind por color - un solo lugar para no repetir el mapeo en cada componente. */
 export const CLASES_COLOR_UNIDAD = {
-  naranja: { fila: "bg-tertiary-container/20 border-l-4 border-tertiary", texto: "text-tertiary", etiqueta: "Anomalía de datos" },
-  rojo: { fila: "bg-error-container/20 border-l-4 border-error", texto: "text-error", etiqueta: "Con reportes" },
-  amarillo: { fila: "bg-yellow-100 border-l-4 border-yellow-500", texto: "text-yellow-700", etiqueta: "Sin departamento" },
-  azul: { fila: "bg-blue-50 border-l-4 border-blue-400", texto: "text-blue-600", etiqueta: "Sin económico" },
+  duplicados: {
+    fila: "bg-blue-50 border-l-4 border-l-blue-600",
+    texto: "text-blue-950",
+    badge: "border border-blue-300 bg-blue-100 text-blue-950",
+    resalte: "ring-1 ring-inset ring-blue-500",
+    color: "#2563eb",
+    etiqueta: "Datos duplicados",
+  },
+  datos: {
+    fila: "bg-yellow-50 border-l-4 border-l-yellow-600",
+    texto: "text-yellow-950",
+    badge: "border border-yellow-300 bg-yellow-100 text-yellow-950",
+    resalte: "ring-1 ring-inset ring-yellow-500",
+    color: "#eab308",
+    etiqueta: "Unidades por completar",
+  },
+  transacciones: {
+    fila: "bg-purple-50 border-l-4 border-l-purple-500",
+    texto: "text-purple-950",
+    badge: "border border-purple-300 bg-purple-100 text-purple-950",
+    resalte: "ring-1 ring-inset ring-purple-400",
+    color: "#9333ea",
+    etiqueta: "Cifras atípicas",
+  },
+  edenred: {
+    fila: "bg-pink-50 border-l-4 border-l-pink-600",
+    texto: "text-pink-950",
+    badge: "border border-pink-300 bg-pink-100 text-pink-950",
+    resalte: "ring-1 ring-inset ring-pink-500",
+    color: "#db2777",
+    etiqueta: "Alertas Edenred",
+  },
+  reporte: {
+    fila: "bg-orange-50 border-l-4 border-l-orange-600",
+    texto: "text-orange-950",
+    badge: "border border-orange-300 bg-orange-100 text-orange-950",
+    resalte: "ring-1 ring-inset ring-orange-500",
+    color: "#ea580c",
+    etiqueta: "Reporte activo",
+  },
+  ok: {
+    fila: "bg-white",
+    texto: "text-slate-700",
+    badge: "border border-slate-300 bg-white text-slate-700",
+    resalte: "",
+    color: "#64748b",
+    etiqueta: "Sin alertas",
+  },
 };
 
-/**
- * Detecta si una unidad tiene VIN o placa duplicados con alguna otra
- * unidad de la flota (misma lógica que `detectarVinDuplicados`, pero a
- * nivel de una sola unidad y también cubriendo placa, no solo VIN).
- * @param {Object} unidad
- * @param {Array<Object>} todasLasUnidades
- * @returns {boolean}
- */
-function tieneAnomaliaDeDuplicidad(unidad, todasLasUnidades) {
-  const otras = todasLasUnidades.filter((otra) => otra.id !== unidad.id);
-  const vinDuplicado = unidad.numeroSerie && otras.some((otra) => otra.numeroSerie === unidad.numeroSerie);
-  const placaDuplicada =
-    unidad.placas && unidad.placas !== "BLANCA" && otras.some((otra) => otra.placas === unidad.placas && otra.placas !== "BLANCA");
-  return Boolean(vinDuplicado || placaDuplicada);
+export const CLASES_ESTADO_UNIDAD = {
+  "en-ruta": {
+    texto: "border border-sky-800 bg-sky-800 text-white",
+    punto: "bg-sky-600",
+  },
+  "en-estacion": {
+    texto: "border border-green-800 bg-green-800 text-white",
+    punto: "bg-green-600",
+  },
+  taller: {
+    texto: "border border-amber-800 bg-amber-800 text-white",
+    punto: "bg-amber-600",
+  },
+  baja: {
+    texto: "border border-rose-800 bg-rose-800 text-white",
+    punto: "bg-rose-600",
+  },
+  "sin-estado": {
+    texto: "border border-slate-700 bg-slate-700 text-white",
+    punto: "bg-slate-600",
+  },
+};
+
+const PRIORIDAD_CATEGORIA = ["duplicados", "datos", "transacciones", "edenred"];
+export const CATEGORIAS_COLOR_UNIDAD = [
+  "duplicados",
+  "datos",
+  "transacciones",
+  "edenred",
+  "reporte",
+  "ok",
+];
+
+export function evaluarColorUnidad(unidad, _todasLasUnidades, reportes, anomalias = []) {
+  const casosUnidad = anomalias.filter((anomalia) =>
+    (anomalia.unidadIds ?? []).some((id) => String(id) === String(unidad.id)),
+  );
+  const categorias = new Set(casosUnidad.map((anomalia) => anomalia.categoria));
+  const tieneReporteActivo = reportes.some((reporte) =>
+    reporte.estado !== "resuelto"
+      && (reporte.unidadesIds ?? []).some((id) => String(id) === String(unidad.id)),
+  );
+  const alertas = [
+    ...PRIORIDAD_CATEGORIA.filter((categoria) => categorias.has(categoria)),
+    ...(tieneReporteActivo ? ["reporte"] : []),
+  ];
+  const razones = [
+    ...alertas.map((categoria) => CLASES_COLOR_UNIDAD[categoria].etiqueta),
+  ];
+
+  const color = alertas[0] ?? "ok";
+
+  return { color, razones, alertas: alertas.length > 0 ? alertas : ["ok"] };
 }
 
-/**
- * Evalúa el color de UNA unidad. Recibe la flota completa (para detectar
- * duplicados) y los reportes activos (para saber si tiene alguno).
- * @param {Object} unidad
- * @param {Array<Object>} todasLasUnidades
- * @param {Array<Object>} reportes  Del store de reportes (cada uno con `unidadesIds`).
- * @returns {{ color: string | null, razones: string[] }}  `razones` lista TODAS las condiciones que aplican, no solo la de mayor prioridad - útil para un tooltip explicativo.
- */
-export function evaluarColorUnidad(unidad, todasLasUnidades, reportes) {
-  const razones = [];
+export function obtenerClasesFilaUnidad(unidad, reportes, anomalias) {
+  const { alertas } = evaluarColorUnidad(unidad, [], reportes, anomalias);
+  const categorias = alertas.filter((categoria) => categoria !== "ok");
+  return [
+    "fleet-unit-row",
+    ...(categorias.length ? ["fleet-unit-row--has-alerts"] : []),
+    ...categorias.map((categoria) => `fleet-unit-row--alert-${categoria}`),
+  ].join(" ");
+}
 
-  const tieneAnomalia = tieneAnomaliaDeDuplicidad(unidad, todasLasUnidades);
-  if (tieneAnomalia) razones.push(CLASES_COLOR_UNIDAD.naranja.etiqueta);
+export function obtenerGradienteFilaAlertas(alertas) {
+  const categorias = [...new Set((alertas ?? []).filter((categoria) =>
+    categoria !== "ok" && CLASES_COLOR_UNIDAD[categoria]?.color,
+  ))];
+  if (categorias.length === 0) return "none";
 
-  const tieneReportes = reportes.some((reporte) => reporte.unidadesIds?.includes(unidad.id));
-  if (tieneReportes) razones.push(CLASES_COLOR_UNIDAD.rojo.etiqueta);
+  const tintes = categorias.map((categoria) =>
+    `color-mix(in srgb, ${CLASES_COLOR_UNIDAD[categoria].color} 48%, #ffffff)`,
+  );
+  if (tintes.length === 1) {
+    const tonoSuave = `color-mix(in srgb, ${CLASES_COLOR_UNIDAD[categorias[0]].color} 38%, #ffffff)`;
+    return `linear-gradient(110deg, ${tintes[0]} 0%, ${tonoSuave} 50%, ${tintes[0]} 100%)`;
+  }
 
-  const sinDepartamento = !unidad.departamento;
-  if (sinDepartamento) razones.push(CLASES_COLOR_UNIDAD.amarillo.etiqueta);
-
-  const sinEconomico = !unidad.economico;
-  if (sinEconomico) razones.push(CLASES_COLOR_UNIDAD.azul.etiqueta);
-
-  // La jerarquía de prioridad decide CUÁL de las condiciones que aplican
-  // es la que se pinta - pero `razones` ya trae todas, sin perder ninguna.
-  let color = COLORES_UNIDAD.OK;
-  if (tieneAnomalia) color = COLORES_UNIDAD.ANOMALIA;
-  else if (tieneReportes) color = COLORES_UNIDAD.CON_REPORTES;
-  else if (sinDepartamento) color = COLORES_UNIDAD.SIN_DEPARTAMENTO;
-  else if (sinEconomico) color = COLORES_UNIDAD.SIN_ECONOMICO;
-
-  return { color, razones };
+  const stops = tintes.map((tinte, index) =>
+    `${tinte} ${(index / (tintes.length - 1)) * 100}%`,
+  );
+  return `linear-gradient(110deg, ${stops.join(", ")})`;
 }

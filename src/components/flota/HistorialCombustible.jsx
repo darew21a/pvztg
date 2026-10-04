@@ -1,6 +1,9 @@
 import { useMemo, useState } from "react";
 import { useFiltrosFlota, useEstadoFiltrosFlota } from "../../hooks/useFiltrosFlota.js";
+import { obtenerAniosDisponibles } from "../../hooks/useEjercicioFiscal.js";
 import BarraFiltrosFlota from "./BarraFiltrosFlota.jsx";
+
+const EMPTY_ARRAY = [];
 
 /**
  * Historial de combustible mensual de una unidad (kilómetros recorridos,
@@ -21,7 +24,7 @@ function HistorialCombustible({ historial, onEditar }) {
   const [borrador, setBorrador] = useState({ km: 0, litros: 0, importe: 0 });
   const { filtros, setFiltro, limpiarFiltros } = useEstadoFiltrosFlota();
 
-  const historialSeguro = historial ?? [];
+  const historialSeguro = historial ?? EMPTY_ARRAY;
 
   // Extractor: le enseña al núcleo centralizado cómo leer la fecha de un
   // registro mensual ("2026-07" -> Date del primer día de ese mes).
@@ -29,7 +32,7 @@ function HistorialCombustible({ historial, onEditar }) {
   const historialFiltrado = useFiltrosFlota(historialSeguro, filtros, extractores);
 
   const aniosDisponibles = useMemo(
-    () => [...new Set(historialSeguro.map((registro) => Number(registro.mes.slice(0, 4))))].sort(),
+    () => obtenerAniosDisponibles(historialSeguro.map((registro) => Number(registro.mes.slice(0, 4)))),
     [historialSeguro],
   );
 
@@ -65,7 +68,7 @@ function HistorialCombustible({ historial, onEditar }) {
         camposVisibles={["anio", "mes"]}
         aniosDisponibles={aniosDisponibles}
       />
-      <div className="overflow-x-auto border border-outline-variant/40 rounded-lg">
+      <div className="table-scroll custom-scrollbar" role="region" tabIndex={0} aria-label="Historial de combustible desplazable">
         <table className="w-full text-left text-sm">
           <thead className="bg-surface-container-high font-label-sm text-label-sm text-on-surface-variant uppercase">
             <tr>
@@ -86,15 +89,15 @@ function HistorialCombustible({ historial, onEditar }) {
                     <>
                       <td className="p-1">
                         <input type="number" value={borrador.km} onChange={(e) => setBorrador((b) => ({ ...b, km: e.target.value }))}
-                          className="w-24 text-right px-2 py-1 border border-outline-variant rounded" />
+                          className="w-24 bg-surface-container-lowest text-on-surface text-right px-2 py-1 border border-outline-variant rounded" />
                       </td>
                       <td className="p-1">
                         <input type="number" value={borrador.litros} onChange={(e) => setBorrador((b) => ({ ...b, litros: e.target.value }))}
-                          className="w-24 text-right px-2 py-1 border border-outline-variant rounded" />
+                          className="w-24 bg-surface-container-lowest text-on-surface text-right px-2 py-1 border border-outline-variant rounded" />
                       </td>
                       <td className="p-1">
                         <input type="number" value={borrador.importe} onChange={(e) => setBorrador((b) => ({ ...b, importe: e.target.value }))}
-                          className="w-28 text-right px-2 py-1 border border-outline-variant rounded" />
+                          className="w-28 bg-surface-container-lowest text-on-surface text-right px-2 py-1 border border-outline-variant rounded" />
                       </td>
                       <td className="p-2 text-right">
                         <button onClick={() => guardarEdicion(registro.mes)} className="text-primary hover:underline text-xs mr-2">Guardar</button>

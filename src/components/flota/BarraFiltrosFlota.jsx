@@ -1,4 +1,6 @@
+import { useMemo } from "react";
 import { useDepartamentos } from "../../hooks/useDepartamentos.js";
+import { obtenerAniosDisponibles } from "../../hooks/useEjercicioFiscal.js";
 
 /**
  * Barra de filtros con inputs SEPARADOS - nunca una sola barra de
@@ -13,7 +15,7 @@ import { useDepartamentos } from "../../hooks/useDepartamentos.js";
  * @param {(campo: string, valor: string) => void} props.setFiltro
  * @param {() => void} props.limpiarFiltros
  * @param {string[]} [props.camposVisibles]  Subconjunto de ["placa","economico","departamento","anio","mes","dia","hora"].
- * @param {number[]} [props.aniosDisponibles]  Años reales presentes en los datos, para el select de Año.
+ * @param {number[]} [props.aniosDisponibles]  Años con datos; se completa con el actual.
  */
 function BarraFiltrosFlota({
   filtros,
@@ -23,6 +25,7 @@ function BarraFiltrosFlota({
   aniosDisponibles = [],
 }) {
   const departamentos = useDepartamentos();
+  const opcionesDeAnio = useMemo(() => obtenerAniosDisponibles(aniosDisponibles), [aniosDisponibles]);
   const MESES = [
     "Enero", "Febrero", "Marzo", "Abril", "Mayo", "Junio",
     "Julio", "Agosto", "Septiembre", "Octubre", "Noviembre", "Diciembre",
@@ -77,7 +80,7 @@ function BarraFiltrosFlota({
             className="px-3 py-1.5 border border-outline-variant rounded-md bg-surface-bright text-sm"
           >
             <option value="">Todos</option>
-            {aniosDisponibles.map((anio) => (
+            {opcionesDeAnio.map((anio) => (
               <option key={anio} value={anio}>{anio}</option>
             ))}
           </select>

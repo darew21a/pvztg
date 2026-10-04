@@ -11,24 +11,12 @@
  * y si mañana se agrega un departamento nuevo, todo el sistema lo ve sin
  * tocar código.
  *
- * Semilla inicial: los 9 departamentos reales de CFE Transmisión Zona
- * Guerrero ya confirmados. Cuando exista el backend, este store se
- * reemplaza por llamadas a la tabla `Departamentos` (ver
- * `server-design/esquema-relacional.js`) sin tocar los componentes.
+ * La API es la única fuente de departamentos. Este store comienza vacío y
+ * sólo mantiene en memoria la respuesta remota durante la sesión.
  * ============================================================================
  */
 
-let departamentos = [
-  { id: "jefatura", nombre: "Jefatura", icono: "badge" },
-  { id: "lineas", nombre: "Líneas", icono: "power" },
-  { id: "subestaciones", nombre: "Subestaciones", icono: "electrical_services" },
-  { id: "protecciones", nombre: "Protecciones", icono: "shield" },
-  { id: "comunicaciones", nombre: "Comunicaciones", icono: "cell_tower" },
-  { id: "control", nombre: "Control", icono: "settings_input_antenna" },
-  { id: "ixtapa-potencia", nombre: "Ixtapa Potencia", icono: "bolt" },
-  { id: "chilpancingo-potencia", nombre: "Chilpancingo Potencia", icono: "bolt" },
-  { id: "zona-operacion-transmision", nombre: "Zona de Operación de Transmisión Guerrero-Morelos", icono: "hub" },
-];
+let departamentos = [];
 
 const listeners = new Set();
 
@@ -45,23 +33,24 @@ export function obtenerDepartamentos() {
   return departamentos;
 }
 
+export function reemplazarDepartamentos(departamentosRemotos) {
+  departamentos = Array.isArray(departamentosRemotos) ? departamentosRemotos : [];
+  notificar();
+}
+
 export function obtenerNombreDepartamento(id) {
-  return departamentos.find((departamento) => departamento.id === id)?.nombre ?? "Sin departamento asignado";
+  const departamento = departamentos.find(
+    (item) => String(item.id) === String(id) || item.nombre === id,
+  );
+  return departamento?.nombre ?? "Sin departamento asignado";
 }
 
 /**
- * Da de alta un departamento nuevo - el sistema no tiene límite de
- * cuántos puede haber. `id` se genera a partir del nombre si no se da uno.
- * @param {{ nombre: string, icono?: string }} datos
+ * Incorpora al cache reactivo un departamento confirmado por la API.
+ * @param {{ id: string | number, nombre: string, icono?: string }} departamento
  */
-export function agregarDepartamento({ nombre, icono = "corporate_fare" }) {
-  const id = nombre
-    .toLowerCase()
-    .normalize("NFD")
-    .replace(/[\u0300-\u036f]/g, "") // quita acentos
-    .replace(/[^a-z0-9]+/g, "-")
-    .replace(/(^-|-$)/g, "");
-  const nuevoDepartamento = { id, nombre, icono };
+export function agregarDepartamento(departamento) {
+  const nuevoDepartamento = { ...departamento, id: String(departamento.id) };
   departamentos = [...departamentos, nuevoDepartamento];
   notificar();
   return nuevoDepartamento;

@@ -1,5 +1,8 @@
 import { useMemo, useState } from "react";
-import { agregarReporte } from "../../data/reportesStore.js";
+import GlowButton from "../ui/GlowButton.jsx";
+import { agregarReporteRemoto, actualizarReporte } from "../../data/reportesStore.js";
+import { crearReporteApi } from "../../services/reporteService.js";
+import { resolveApiUrl } from "../../services/apiAuth.js";
 import { generarPdfReporte } from "../../utils/generarReportePdf.js";
 
 const TIPOS_SINIESTRO = [
@@ -33,6 +36,12 @@ function validarDescripcionSemantica(texto) {
   return /[a-záéíóúüñ0-9]/i.test(descripcion);
 }
 
+async function pdfUrlToFile(pdfUrl, filename) {
+  const response = await fetch(pdfUrl);
+  if (!response.ok) throw new Error("No fue posible preparar el PDF del reporte.");
+  return new File([await response.blob()], filename, { type: "application/pdf" });
+}
+
 /**
  * Formulario para levantar un reporte formal sobre una o varias unidades
  * del departamento. El flujo exige información completa del incidente y
@@ -51,6 +60,7 @@ function ModalLevantarReporte({ usuario, unidadesDelDepartamento, onCerrar }) {
   const [error, setError] = useState("");
   const [pdfGenerado, setPdfGenerado] = useState(null);
   const [mostrarTipoLibre, setMostrarTipoLibre] = useState(false);
+  const [guardando, setGuardando] = useState(false);
 
   const formularioValido = useMemo(() => {
     const tieneUnidades = unidadesSeleccionadas.length > 0;
@@ -65,7 +75,7 @@ function ModalLevantarReporte({ usuario, unidadesDelDepartamento, onCerrar }) {
     );
   }
 
-  function handleEnviar(event) {
+  async function handleEnviar(event) {
     event.preventDefault();
     setError("");
 
@@ -88,11 +98,11 @@ function ModalLevantarReporte({ usuario, unidadesDelDepartamento, onCerrar }) {
 
     const detalleFinal = mostrarTipoLibre && tipoSiniestroLibre.trim() ? tipoSiniestroLibre.trim() : tipoSiniestro;
 
-    const reporte = agregarReporte({
+    const datosReporte = {
       tipoReporte: "siniestro",
       unidadesIds: unidadesSeleccionadas,
       autorNombre: usuario.nombre,
-      autorDepartamento: usuario.departamento,
+      autorDepartamento: usuario.departamento ?? usuario.departamentoId,
       descripcion: descripcion.trim(),
       gravedad,
       detalleSiniestro: detalleFinal,
@@ -101,11 +111,33 @@ function ModalLevantarReporte({ usuario, unidadesDelDepartamento, onCerrar }) {
       lugarHechos: lugarHechos.trim(),
       horarioHechos,
       pdfUrl: "",
-    });
+    };
 
-    const urlPdf = generarPdfReporte(reporte, unidadesElegidas);
-    reporte.pdfUrl = urlPdf;
-    setPdfGenerado({ folio: reporte.folio, url: urlPdf });
+    setGuardando(true);
+    const pestañaPdf = window.open("about:blank", "_blank");
+    try {
+      const reporteLocal = { ...datosReporte, id: `local-${Date.now()}` };
+      const urlPdf = await generarPdfReporte(reporteLocal, unidadesElegidas);
+      if (pestañaPdf && !pestañaPdf.closed) pestañaPdf.location.href = urlPdf;
+      const formulario = new FormData();
+      Object.entries(datosReporte).forEach(([clave, valor]) => {
+        if (Array.isArray(valor)) valor.forEach((item) => formulario.append(`${clave}[]`, item));
+        else formulario.append(clave, valor ?? "");
+      });
+      formulario.delete("unidadesIds[]");
+      unidadesSeleccionadas.forEach((unidadId) => formulario.append("unidadesIds[]", unidadId));
+      formulario.append("incidentPdf", await pdfUrlToFile(urlPdf, "reporte-incidente.pdf"));
+      const remoto = await crearReporteApi(formulario);
+      const pdfPersistido = resolveApiUrl(remoto.pdfUrl) || urlPdf;
+      const reporte = agregarReporteRemoto({ ...datosReporte, pdfUrl: pdfPersistido }, remoto);
+      actualizarReporte(reporte.id, { pdfUrl: pdfPersistido });
+      setPdfGenerado({ folio: remoto.folio, url: urlPdf });
+    } catch (apiError) {
+      if (pestañaPdf && !pestañaPdf.closed) pestañaPdf.close();
+      setError(apiError.message);
+    } finally {
+      setGuardando(false);
+    }
   }
 
   if (pdfGenerado) {
@@ -118,14 +150,15 @@ function ModalLevantarReporte({ usuario, unidadesDelDepartamento, onCerrar }) {
             El PDF quedó listo para descargar y se conserva como constancia del incidente.
           </p>
           <div className="flex justify-center gap-2">
-            <a
+            <GlowButton
+              as="a"
               href={pdfGenerado.url}
-              download={`${pdfGenerado.folio}.pdf`}
-              className="px-4 py-2 bg-primary text-on-primary rounded-lg font-label-sm text-label-sm hover:bg-secondary transition-colors flex items-center gap-1"
+              target="_blank"
+              rel="noopener noreferrer"
             >
               <span className="material-symbols-outlined text-[18px]">download</span>
-              Descargar PDF
-            </a>
+              Abrir PDF
+            </GlowButton>
             <button onClick={onCerrar} className="px-4 py-2 border border-outline-variant text-on-surface-variant rounded-lg font-label-sm text-label-sm hover:bg-surface transition-colors">
               Cerrar
             </button>
@@ -317,7 +350,7 @@ function ModalLevantarReporte({ usuario, unidadesDelDepartamento, onCerrar }) {
           </button>
           <button
             type="submit"
-            disabled={!formularioValido}
+            disabled={!formularioValido || guardando}
             className={`px-4 py-2 rounded-lg font-label-sm text-label-sm flex items-center justify-center gap-1 transition-colors ${
               formularioValido
                 ? "bg-primary text-on-primary hover:bg-secondary"
@@ -325,7 +358,7 @@ function ModalLevantarReporte({ usuario, unidadesDelDepartamento, onCerrar }) {
             }`}
           >
             <span className="material-symbols-outlined text-[18px]">send</span>
-            Generar PDF y enviar
+            {guardando ? "Guardando…" : "Generar PDF y enviar"}
           </button>
         </div>
         </form>

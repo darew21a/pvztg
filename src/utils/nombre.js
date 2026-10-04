@@ -1,7 +1,5 @@
 /**
- * Extrae hasta 2 iniciales de un nombre completo. Se usa como avatar del
- * auditor en toda la app: por requisito, el perfil del auditor nunca usa
- * una foto subida, siempre son las iniciales de su nombre.
+ * Extrae hasta 2 iniciales de un nombre completo para los avatares de usuario.
  * @param {string | null | undefined} nombre
  * @returns {string}
  */

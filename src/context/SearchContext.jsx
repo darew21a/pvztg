@@ -1,19 +1,15 @@
-import { createContext, useContext, useState } from "react";
-
-const SearchContext = createContext({
-  query: "",
-  setQuery: () => {},
-  mostrarResultados: false,
-  setMostrarResultados: () => {},
-});
+import { useState } from "react";
+import SearchContext from "./searchContext.js";
 
 export function SearchProvider({ children }) {
   const [query, setQuery] = useState("");
   const [mostrarResultados, setMostrarResultados] = useState(false);
 
-  return <SearchContext.Provider value={{ query, setQuery, mostrarResultados, setMostrarResultados }}>{children}</SearchContext.Provider>;
-}
+  const dismissSuggestions = () => setMostrarResultados(false);
 
-export function useSearch() {
-  return useContext(SearchContext);
+  return (
+    <SearchContext.Provider value={{ query, setQuery, mostrarResultados, setMostrarResultados, dismissSuggestions }}>
+      {children}
+    </SearchContext.Provider>
+  );
 }

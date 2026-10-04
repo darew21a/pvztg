@@ -20,11 +20,13 @@ function JefeDepartamentoLoginPage() {
   const [departamentoId, setDepartamentoId] = useState("");
   const [usuario, setUsuario] = useState("");
   const [password, setPassword] = useState("");
-  const [recordarSesion, setRecordarSesion] = useState(false);
+  const [mostrarPassword, setMostrarPassword] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [errorMensaje, setErrorMensaje] = useState("");
   const { loginJefeDepartamento } = useAuth();
   const navigate = useNavigate();
+
+  const departamentosDisponibles = departamentos.filter((departamento) => departamento.activo !== false);
 
   async function handleSubmit(event) {
     event.preventDefault();
@@ -35,8 +37,8 @@ function JefeDepartamentoLoginPage() {
     }
     setIsLoading(true);
     try {
-      await loginJefeDepartamento({ usuario, password, departamento: departamentoId }, recordarSesion);
-      navigate("/jefe-departamento");
+      const sesion = await loginJefeDepartamento({ usuario, password, departamento: departamentoId });
+      navigate(sesion.usuario.debeCambiarPassword ? "/cambiar-contrasena" : "/jefe-departamento", { replace: true });
     } catch (error) {
       setErrorMensaje(error.message);
     } finally {
@@ -61,8 +63,12 @@ function JefeDepartamentoLoginPage() {
 
         <form onSubmit={handleSubmit} className="space-y-6">
           <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
-            {departamentos.map((departamento) => {
-              const isActive = departamentoId === departamento.id;
+            {departamentosDisponibles.length === 0 ? (
+              <p className="col-span-full rounded-lg border border-outline-variant bg-surface-container px-4 py-3 text-center text-sm text-on-surface-variant">
+                No hay departamentos disponibles. Verifica la conexión con el backend.
+              </p>
+            ) : departamentosDisponibles.map((departamento) => {
+              const isActive = String(departamentoId) === String(departamento.id);
               return (
                 <button
                   key={departamento.id}
@@ -100,30 +106,30 @@ function JefeDepartamentoLoginPage() {
                 <label className="block font-label-sm text-label-sm text-on-surface-variant uppercase tracking-wide" htmlFor="jefe-password">
                   Contraseña
                 </label>
-                <Link to="/recuperar-contrasena" className="font-label-sm text-label-sm text-primary hover:text-secondary transition-colors">
-                  ¿Olvidó su contraseña?
-                </Link>
               </div>
-              <input
-                id="jefe-password"
-                type="password"
-                required
-                value={password}
-                onChange={(event) => setPassword(event.target.value)}
-                className="w-full px-3 py-2 border border-outline-variant rounded-md bg-surface-bright text-on-surface font-body-md focus:outline-none focus:border-primary focus:ring-1 focus:ring-primary transition-colors"
-              />
+              <div className="relative">
+                <input
+                  id="jefe-password"
+                  type={mostrarPassword ? "text" : "password"}
+                  required
+                  value={password}
+                  onChange={(event) => setPassword(event.target.value)}
+                  className="w-full px-3 py-2 pr-11 border border-outline-variant rounded-md bg-surface-bright text-on-surface font-body-md focus:outline-none focus:border-primary focus:ring-1 focus:ring-primary transition-colors"
+                />
+                <button
+                  type="button"
+                  onClick={() => setMostrarPassword((visible) => !visible)}
+                  aria-label={mostrarPassword ? "Ocultar contraseña" : "Mostrar contraseña"}
+                  title={mostrarPassword ? "Ocultar contraseña" : "Mostrar contraseña"}
+                  className="absolute inset-y-0 right-0 flex items-center px-3 text-on-surface-variant hover:text-primary"
+                >
+                  <span className="material-symbols-outlined text-[20px]">
+                    {mostrarPassword ? "visibility_off" : "visibility"}
+                  </span>
+                </button>
+              </div>
             </div>
           </div>
-
-          <label className="flex items-center gap-2 cursor-pointer select-none">
-            <input
-              type="checkbox"
-              checked={recordarSesion}
-              onChange={(event) => setRecordarSesion(event.target.checked)}
-              className="w-4 h-4 rounded border-outline-variant text-primary focus:ring-primary"
-            />
-            <span className="font-body-md text-body-md text-on-surface-variant">Recordar sesión en este dispositivo</span>
-          </label>
 
           <button
             type="submit"

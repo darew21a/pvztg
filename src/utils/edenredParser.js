@@ -1,4 +1,5 @@
-import * as XLSX from "xlsx";
+import readXlsxFile from "read-excel-file/browser";
+import { MULTIPLICADOR_TOLERANCIA_CAPACIDAD } from "../../shared/anomalyRules.js";
 
 /**
  * ============================================================================
@@ -54,9 +55,6 @@ export const CAMPOS_EDENRED = [
 /** Columnas que se muestran por defecto en la tabla detallada (las 3 que de verdad usan hoy, más contexto mínimo). */
 export const CAMPOS_EDENRED_DEFAULT = ["Fecha transacción", "Placa", "Recorrido", "Cantidad Mercancía", "Importe Transacción"];
 
-// Desviación de rendimiento real vs. de ficha técnica que dispara una alerta de anomalía.
-const UMBRAL_DESVIACION_RENDIMIENTO = 0.15;
-
 function agregarAnomalias(acumulado, transaccion) {
   const odometro = Number(transaccion["Km Transacción"]);
   if (odometro > 1000000) {
@@ -64,24 +62,9 @@ function agregarAnomalias(acumulado, transaccion) {
     if (!acumulado.anomalias.includes(alerta)) acumulado.anomalias.push(alerta);
   }
 
-  const rendimientoFicha = Number(transaccion["Rendimiento Vehículo"]);
-  const rendimientoReal = Number(transaccion["Rendimiento Real"]);
-  if (rendimientoFicha > 0 && rendimientoReal >= 0) {
-    const desviacion = Math.abs(rendimientoReal - rendimientoFicha) / rendimientoFicha;
-    if (desviacion > UMBRAL_DESVIACION_RENDIMIENTO) {
-      const alerta = `Rendimiento: ${rendimientoReal.toFixed(2)} km/L frente a ${rendimientoFicha.toFixed(2)} km/L esperados (${(desviacion * 100).toFixed(0)}% de diferencia)`;
-      const indice = acumulado.anomalias.findIndex((anomalia) => anomalia.startsWith("Rendimiento:"));
-      if (indice === -1) acumulado.anomalias.push(alerta);
-      else {
-        const anterior = Number(acumulado.anomalias[indice].match(/\((\d+)% de diferencia\)/)?.[1] ?? 0);
-        if (desviacion * 100 > anterior) acumulado.anomalias[indice] = alerta;
-      }
-    }
-  }
-
   const capacidadTanque = Number(transaccion["Capacidad de Tanque"]);
   const litrosCargados = Number(transaccion["Cantidad Mercancía"]);
-  if (capacidadTanque > 0 && litrosCargados > capacidadTanque) {
+  if (capacidadTanque > 0 && litrosCargados > capacidadTanque * MULTIPLICADOR_TOLERANCIA_CAPACIDAD) {
     const alerta = `Capacidad: se cargaron ${litrosCargados} L y el tanque admite ${capacidadTanque} L`;
     if (!acumulado.anomalias.includes(alerta)) acumulado.anomalias.push(alerta);
   }
@@ -97,13 +80,13 @@ function agregarAnomalias(acumulado, transaccion) {
  */
 export async function leerArchivoEdenred(archivo) {
   const buffer = await archivo.arrayBuffer();
-  const libro = XLSX.read(buffer, { cellDates: true });
-  const hoja = libro.Sheets[libro.SheetNames[0]];
+  const hojas = await readXlsxFile(buffer);
+  const hoja = hojas[0];
   // raw: true (por defecto) conserva las fechas como objetos Date reales.
   // Con raw:false, SheetJS las formatea a texto "DD/MM/AAAA" y JavaScript
   // interpreta esa cadena como MM/DD/AAAA (convención EE. UU.) al hacer
   // `new Date(...)`, leyendo "01/07/2026" (1 de julio) como 7 de enero.
-  const filas = XLSX.utils.sheet_to_json(hoja, { header: 1, defval: null });
+  const filas = hoja?.data ?? [];
 
   const indiceEncabezado = filas.findIndex(
     (fila) => fila.includes("Placa") && fila.some((valor) => String(valor).startsWith("Fecha transacción")),
@@ -190,8 +173,20 @@ function sugerirPlacaParecida(placaSinCoincidencia, placasConocidas) {
 
 /** Convierte una fecha de transacción (Date, string o serial de Excel) al formato "AAAA-MM". */
 function obtenerMes(fechaTransaccion) {
-  const fecha = fechaTransaccion instanceof Date ? fechaTransaccion : new Date(fechaTransaccion);
+  let fecha;
+  if (typeof fechaTransaccion === "number" && Number.isFinite(fechaTransaccion)) {
+    fecha = new Date(Date.UTC(1899, 11, 30) + fechaTransaccion * 86400000);
+  } else if (fechaTransaccion instanceof Date) {
+    fecha = fechaTransaccion;
+  } else {
+    const texto = String(fechaTransaccion ?? "").trim();
+    const partes = texto.match(/^(\d{1,2})[/-](\d{1,2})[/-](\d{4})/);
+    fecha = partes
+      ? new Date(Number(partes[3]), Number(partes[2]) - 1, Number(partes[1]))
+      : new Date(texto);
+  }
   if (Number.isNaN(fecha.getTime())) return null;
+  if (fecha.getFullYear() < 2000 || fecha.getFullYear() > 2100) return null;
   return `${fecha.getFullYear()}-${String(fecha.getMonth() + 1).padStart(2, "0")}`;
 }
 

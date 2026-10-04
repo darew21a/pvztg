@@ -1,0 +1,2 @@
+ALTER TABLE unidades
+  MODIFY COLUMN placas_2025 TEXT NULL;

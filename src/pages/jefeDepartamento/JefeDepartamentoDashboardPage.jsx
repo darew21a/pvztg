@@ -8,6 +8,10 @@ import { ESTADOS_UNIDAD } from "../../data/unidadesStore.js";
 import ModalLevantarReporte from "../../components/jefeDepartamento/ModalLevantarReporte.jsx";
 import ModalCargarCombustible from "../../components/jefeDepartamento/ModalCargarCombustible.jsx";
 import PanelDocumentosSoloLectura from "../../components/jefeDepartamento/PanelDocumentosSoloLectura.jsx";
+import NumeroEconomico from "../../components/flota/NumeroEconomico.jsx";
+import AvatarUsuario from "../../components/perfil/AvatarUsuario.jsx";
+import SeguimientoReportes from "../../components/reportes/SeguimientoReportes.jsx";
+import { useReportes } from "../../hooks/useReportes.js";
 
 // Mismo mapa estático que usa Flota - Tailwind no puede purgar clases armadas con template strings.
 const CLASES_ESTADO = {
@@ -31,13 +35,24 @@ function JefeDepartamentoDashboardPage() {
   const { usuario, logout } = useAuth();
   const navigate = useNavigate();
   const todasLasUnidades = useUnidades();
+  const reportes = useReportes();
   const [mostrarReporte, setMostrarReporte] = useState(false);
   const [mostrarCombustible, setMostrarCombustible] = useState(false);
   const [unidadDocumentos, setUnidadDocumentos] = useState(null);
 
   const unidadesDelDepartamento = useMemo(
-    () => todasLasUnidades.filter((unidad) => unidad.departamento === usuario.departamento),
-    [todasLasUnidades, usuario.departamento],
+    () => {
+      const departamentoId = usuario?.departamentoId;
+      const departamentoNombre = usuario?.departamento;
+      if (departamentoId !== null && departamentoId !== undefined && String(departamentoId).trim() !== "") {
+        return todasLasUnidades.filter((unidad) => String(unidad.departamentoId ?? "") === String(departamentoId));
+      }
+      if (departamentoNombre) {
+        return todasLasUnidades.filter((unidad) => unidad.departamento === departamentoNombre);
+      }
+      return [];
+    },
+    [todasLasUnidades, usuario?.departamento, usuario?.departamentoId],
   );
 
   function estadoInfo(valor) {
@@ -56,11 +71,20 @@ function JefeDepartamentoDashboardPage() {
         <div className="flex items-center gap-3">
           <img src={logoCfe} alt="Comisión Federal de Electricidad" className="h-8 w-auto" />
           <div>
-            <p className="font-title-md text-title-md text-on-surface leading-tight">{obtenerNombreDepartamento(usuario.departamento)}</p>
+            <p className="font-title-md text-title-md text-on-surface leading-tight">{obtenerNombreDepartamento(usuario.departamentoId ?? usuario.departamento)}</p>
             <p className="font-label-sm text-label-sm text-on-surface-variant">Jefe de Departamento {usuario.nombre}</p>
           </div>
         </div>
         <div className="flex items-center gap-2">
+          <button
+            type="button"
+            onClick={() => navigate("/perfil")}
+            className="flex items-center gap-2 rounded-full border border-outline-variant bg-surface-container px-2 py-1.5 text-left transition hover:border-primary hover:text-primary"
+            aria-label="Ir a mi perfil"
+          >
+            <AvatarUsuario nombre={usuario?.nombre} className="h-9 w-9" />
+            <span className="hidden sm:block text-sm font-medium text-on-surface">Mi perfil</span>
+          </button>
           <button onClick={handleCerrarSesion} className="px-3 py-2 text-on-surface-variant hover:text-error font-label-sm text-label-sm flex items-center gap-1 transition-colors">
             <span className="material-symbols-outlined text-[18px]">logout</span>
             Cerrar sesión
@@ -102,25 +126,25 @@ function JefeDepartamentoDashboardPage() {
             </p>
           </div>
         ) : (
-          <div className="bg-surface-container-lowest rounded-lg border border-outline-variant overflow-x-auto">
-            <table className="w-full text-left">
+          <div className="table-scroll custom-scrollbar" role="region" tabIndex={0} aria-label="Unidades asignadas desplazables">
+            <table className="fleet-unit-assignment-table w-full text-left">
               <thead className="bg-surface-container-high">
                 <tr className="font-label-sm text-label-sm text-on-surface-variant uppercase">
-                  <th className="p-3">Económico</th>
-                  <th className="p-3">Marca / Submarca</th>
-                  <th className="p-3">Tipo</th>
-                  <th className="p-3">Modelo</th>
-                  <th className="p-3">No. Serie</th>
-                  <th className="p-3">Placas</th>
-                  <th className="p-3">Placas vigentes</th>
-                  <th className="p-3">Centro Gestor</th>
-                  <th className="p-3">Centro Costos</th>
-                  <th className="p-3">Arrendadora</th>
-                  <th className="p-3">Resguardante(s)</th>
-                  <th className="p-3">Kilometraje</th>
-                  <th className="p-3">Combustible</th>
-                  <th className="p-3">Estado</th>
-                  <th className="p-3">Documentos</th>
+                  <th>Económico</th>
+                  <th>Marca / Submarca</th>
+                  <th>Tipo</th>
+                  <th>Modelo</th>
+                  <th>No. Serie</th>
+                  <th>Placas</th>
+                  <th>Placas vigentes ({new Date().getFullYear()})</th>
+                  <th>Centro Gestor</th>
+                  <th>Centro Costos</th>
+                  <th>Arrendadora</th>
+                  <th>Resguardante(s)</th>
+                  <th>Kilometraje</th>
+                  <th>Combustible</th>
+                  <th>Estado</th>
+                  <th>Documentos</th>
                 </tr>
               </thead>
               <tbody className="font-body-md text-body-md text-on-surface divide-y divide-outline-variant/30">
@@ -128,27 +152,27 @@ function JefeDepartamentoDashboardPage() {
                   const estado = estadoInfo(unidad.estado);
                   return (
                     <tr key={unidad.id} className="hover:bg-surface-container-low transition-colors">
-                      <td className="p-3 font-technical-mono text-technical-mono">{unidad.economico ?? "Pendiente"}</td>
-                      <td className="p-3">{unidad.marca} {unidad.submarca}</td>
-                      <td className="p-3">{unidad.tipo ?? "-"}</td>
-                      <td className="p-3">{unidad.modelo ?? "-"}</td>
-                      <td className="p-3 font-technical-mono text-technical-mono text-xs">{unidad.numeroSerie}</td>
-                      <td className="p-3">{unidad.placas ?? "-"}</td>
-                      <td className="p-3">{unidad.placas2025 ?? "-"}</td>
-                      <td className="p-3">{unidad.centroGestor ?? "-"}</td>
-                      <td className="p-3">{unidad.centroCostos ?? "-"}</td>
-                      <td className="p-3">{unidad.arrendadora ?? "-"}</td>
-                      <td className="p-3">
+                      <td><NumeroEconomico valor={unidad.economico} /></td>
+                      <td>{unidad.marca} {unidad.submarca}</td>
+                      <td>{unidad.tipo ?? "-"}</td>
+                      <td>{unidad.modelo ?? "-"}</td>
+                      <td className="font-technical-mono text-technical-mono">{unidad.numeroSerie}</td>
+                      <td>{unidad.placas ?? "-"}</td>
+                      <td>{unidad.placas2025 ?? "-"}</td>
+                      <td>{unidad.centroGestor ?? "-"}</td>
+                      <td>{unidad.centroCostos ?? "-"}</td>
+                      <td>{unidad.arrendadora ?? "-"}</td>
+                      <td>
                         {[unidad.conductorAsignado, unidad.conductorAsignado2].filter(Boolean).join(" y ") || "Sin asignar"}
                       </td>
-                      <td className="p-3">{unidad.kilometraje ? `${unidad.kilometraje.toLocaleString("es-MX")} km` : "Sin capturar"}</td>
-                      <td className="p-3">{unidad.tipoCombustible ?? "Sin capturar"}</td>
-                      <td className="p-3">
+                      <td>{unidad.kilometraje ? `${unidad.kilometraje.toLocaleString("es-MX")} km` : "Sin capturar"}</td>
+                      <td>{unidad.tipoCombustible ?? "Sin capturar"}</td>
+                      <td>
                         <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium uppercase ${CLASES_ESTADO[estado.color]}`}>
                           {estado.label}
                         </span>
                       </td>
-                      <td className="p-3">
+                      <td>
                         <button onClick={() => setUnidadDocumentos(unidad)} className="text-primary hover:underline text-xs flex items-center gap-1">
                           <span className="material-symbols-outlined text-[16px]">folder_open</span>
                           Ver
@@ -161,6 +185,7 @@ function JefeDepartamentoDashboardPage() {
             </table>
           </div>
         )}
+        <SeguimientoReportes reportes={reportes} usuario={usuario} soloDepartamento />
       </main>
 
       {mostrarReporte && (

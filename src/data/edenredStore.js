@@ -1,5 +1,9 @@
-import { aplicarContribucionEdenred, revertirContribucionEdenred, revertirKilometrajeSiNoCambio } from "./unidadesStore.js";
+import { aplicarContribucionEdenred, reemplazarUnidades } from "./unidadesStore.js";
 import { agregarRegistroEliminacion } from "./historialEliminacionesStore.js";
+import { getAuthHeaders } from "../services/apiAuth.js";
+import { obtenerUnidadesApi } from "../services/unidadService.js";
+
+const API_BASE_URL = import.meta.env.VITE_API_BASE_URL ?? "/api";
 
 /**
  * ============================================================================
@@ -10,9 +14,8 @@ import { agregarRegistroEliminacion } from "./historialEliminacionesStore.js";
  * periodo que cubre, sus transacciones crudas, Y el detalle exacto de lo
  * que se aplicó a cada unidad (`resumenAplicado`) - en vez de mezclar
  * todo en una sola lista plana. Guardar ese detalle es lo que permite el
- * rollback en cascada del Módulo 3: para deshacer una carga, basta con
- * revertir exactamente `resumenAplicado`, sin adivinar qué le tocaba a
- * cada unidad.
+ * detalle que el servidor necesita para revertir exactamente los aportes
+ * dentro de la transacción de eliminación.
  * ============================================================================
  */
 
@@ -31,6 +34,11 @@ export function suscribirCargasEdenred(callback) {
 /** Cargas ordenadas de la más reciente a la más antigua. */
 export function obtenerCargasEdenred() {
   return cargas;
+}
+
+export function reemplazarCargasEdenred(remotas) {
+  cargas = Array.isArray(remotas) ? remotas : [];
+  notificar();
 }
 
 /**
@@ -58,29 +66,21 @@ export function agregarCargaEdenred({ periodo, transacciones, resumenAplicado })
 }
 
 /**
- * ELIMINACIÓN LIBRE + ROLLBACK EN CASCADA (Módulo 3).
- * El Administrador puede dar de baja cualquier reporte de Edenred en
- * cualquier momento. Al eliminarlo:
- *   1. Por cada unidad que esa carga había afectado, se resta EXACTAMENTE
- *      lo que se le había sumado (km/litros/importe) - nunca se borra el
- *      mes completo a ciegas, porque otra carga pudo haber aportado al
- *      mismo mes.
- *   2. El kilometraje se revierte solo si nadie lo actualizó después.
- *   3. Los contadores globales de la flota (Dashboard) no se tocan aparte
- *      - se recalculan solos, porque siempre se derivan en vivo de los
- *      datos de las unidades (nunca se guarda un total global aparte que
- *      se pudiera desincronizar).
+ * El servidor revierte los aportes transaccionalmente; después se refresca
+ * el cache de unidades desde la fuente de verdad.
  * @param {string} cargaId
  * @param {string} eliminadoPor  Nombre de quien elimina el reporte, para el log de auditoría.
  */
-export function eliminarCargaEdenred(cargaId, eliminadoPor = "Administrador") {
+export async function eliminarCargaEdenred(cargaId, eliminadoPor = "Administrador") {
   const carga = cargas.find((c) => c.id === cargaId);
-  if (!carga) return;
+  if (!carga) throw new Error("El reporte ya no está disponible.");
 
-  carga.resumenAplicado.forEach(({ unidadId, mes, km, litros, importe, kilometrajeAnterior, kilometrajeAplicado }) => {
-    revertirContribucionEdenred(unidadId, { mes, km, litros, importe });
-    revertirKilometrajeSiNoCambio(unidadId, kilometrajeAplicado, kilometrajeAnterior);
+  const response = await fetch(`${API_BASE_URL}/edenred/cargas/${encodeURIComponent(cargaId)}`, {
+    method: "DELETE",
+    headers: getAuthHeaders(),
   });
+  const body = await response.json().catch(() => null);
+  if (!response.ok) throw new Error(body?.mensaje ?? "No fue posible eliminar el reporte.");
 
   // El HECHO de la eliminación queda para siempre en el log de auditoría,
   // aunque la carga en sí ya no exista.
@@ -94,9 +94,11 @@ export function eliminarCargaEdenred(cargaId, eliminadoPor = "Administrador") {
 
   cargas = cargas.filter((c) => c.id !== cargaId);
   notificar();
+  obtenerUnidadesApi()
+    .then(reemplazarUnidades)
+    .catch((error) => console.error("La carga se eliminó, pero no fue posible refrescar las unidades desde la API.", error));
 }
 
 // Re-exportado por conveniencia: quien aplica una carga (ver AuditoriaEdenredPage)
-// usa esta misma función aditiva para que el registro de `resumenAplicado`
-// y lo que de verdad se sumó en `unidadesStore` nunca queden desincronizados.
+// aplica una carga ya confirmada en la API al store de la sesión.
 export { aplicarContribucionEdenred };

@@ -1,5 +1,6 @@
 import { jsPDF } from "jspdf";
-import { LOGO_CFE_BASE64 } from "../assets/logoCfeBase64.js";
+import { obtenerLogoCfeBase64 } from "./logoCfe.js";
+import { agruparUnidadesPorDepartamento } from "./agruparUnidadesPorDepartamento.js";
 
 function obtenerPlacaParaPdf(unidad) {
   const placaOriginal = (unidad?.placas ?? "").trim();
@@ -13,8 +14,8 @@ function obtenerPlacaParaPdf(unidad) {
   return placa2025 || placaOriginal;
 }
 
-function escribirCabeceraDepartamento(documento, anchoPagina, nombreDepartamento, yInicio) {
-  documento.addImage(LOGO_CFE_BASE64, "PNG", 18, 12, 32, 12);
+function escribirCabeceraDepartamento(documento, anchoPagina, nombreDepartamento, yInicio, logoCfeBase64) {
+  documento.addImage(logoCfeBase64, "PNG", 18, 12, 32, 12);
   documento.setFontSize(12);
   documento.setFont("helvetica", "bold");
   documento.setTextColor(0, 104, 71);
@@ -30,29 +31,19 @@ function escribirCabeceraDepartamento(documento, anchoPagina, nombreDepartamento
   documento.setFont("helvetica", "normal");
 }
 
-export function generarPdfFlotaVehicular({ departamentos = [], unidades = [] }) {
+export async function generarPdfFlotaVehicular({ departamentos = [], unidades = [] }) {
+  const logoCfeBase64 = await obtenerLogoCfeBase64();
   const documento = new jsPDF({ unit: "mm", format: "a4" });
   const anchoPagina = documento.internal.pageSize.getWidth();
   const altoPagina = documento.internal.pageSize.getHeight();
   const margen = 18;
 
-  const unidadesPorDepartamento = new Map();
-  departamentos.forEach((departamento) => unidadesPorDepartamento.set(departamento.id, []));
-  unidadesPorDepartamento.set("sin-departamento", []);
-
-  unidades.forEach((unidad) => {
-    const clave = unidad?.departamento ?? "sin-departamento";
-    const lista = unidadesPorDepartamento.get(clave) ?? [];
-    lista.push(unidad);
-    unidadesPorDepartamento.set(clave, lista);
-  });
-
-  const departamentosOrdenados = [...departamentos, { id: "sin-departamento", nombre: "Sin departamento" }];
+  const departamentosOrdenados = agruparUnidadesPorDepartamento(departamentos, unidades);
   let y = 36;
 
   departamentosOrdenados.forEach((departamento, indice) => {
-    const nombreDepartamento = departamento?.nombre ?? "Sin departamento";
-    const unidadesDelDepartamento = unidadesPorDepartamento.get(departamento.id) ?? [];
+    const nombreDepartamento = departamento.nombre;
+    const unidadesDelDepartamento = departamento.unidades;
 
     if (indice > 0 && y > altoPagina - 35) {
       documento.addPage();
@@ -64,7 +55,7 @@ export function generarPdfFlotaVehicular({ departamentos = [], unidades = [] }) 
       y = 20;
     }
 
-    escribirCabeceraDepartamento(documento, anchoPagina, nombreDepartamento, y);
+    escribirCabeceraDepartamento(documento, anchoPagina, nombreDepartamento, y, logoCfeBase64);
     y += 8;
 
     if (unidadesDelDepartamento.length === 0) {
@@ -91,7 +82,7 @@ export function generarPdfFlotaVehicular({ departamentos = [], unidades = [] }) 
       if (y > altoPagina - 22) {
         documento.addPage();
         y = 20;
-        escribirCabeceraDepartamento(documento, anchoPagina, nombreDepartamento, y);
+        escribirCabeceraDepartamento(documento, anchoPagina, nombreDepartamento, y, logoCfeBase64);
         y += 8;
         documento.setFontSize(8.5);
         documento.setFont("helvetica", "bold");

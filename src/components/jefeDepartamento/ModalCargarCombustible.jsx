@@ -1,5 +1,7 @@
 import { useState } from "react";
 import { agregarTicketCombustible } from "../../data/combustibleTicketsStore.js";
+import { crearTicketApi } from "../../services/combustibleService.js";
+import { resolveApiUrl } from "../../services/apiAuth.js";
 
 const FORMATOS_ACEPTADOS = ".jpg,.jpeg,.png,.pdf";
 
@@ -20,25 +22,39 @@ function ModalCargarCombustible({ usuario, unidadesDelDepartamento, onCerrar }) 
   const [archivoPdfFusionado, setArchivoPdfFusionado] = useState(null);
   const [error, setError] = useState("");
   const [guardado, setGuardado] = useState(false);
+  const [guardando, setGuardando] = useState(false);
 
-  function handleGuardar(event) {
+  async function handleGuardar(event) {
     event.preventDefault();
     setError("");
     if (!unidadId) return setError("Selecciona la unidad que se recargó.");
     if (!litros || !importe) return setError("Captura litros e importe de la recarga.");
     if (!archivoTicketBomba) return setError("El Ticket Bomba (gasolinera física) es obligatorio.");
 
-    agregarTicketCombustible({
-      unidadId,
-      fechaHora: new Date(fechaHora).toISOString(),
-      litros: Number(litros),
-      importe: Number(importe),
-      urlTicketBomba: URL.createObjectURL(archivoTicketBomba),
-      urlTicketEdenred: archivoTicketEdenred ? URL.createObjectURL(archivoTicketEdenred) : null,
-      urlPdfFusionado: archivoPdfFusionado ? URL.createObjectURL(archivoPdfFusionado) : null,
-      subidoPor: usuario.nombre,
-    });
-    setGuardado(true);
+    setGuardando(true);
+    const datos = new FormData();
+    datos.append("unidadId", unidadId);
+    datos.append("fechaHora", new Date(fechaHora).toISOString());
+    datos.append("litros", String(Number(litros)));
+    datos.append("importe", String(Number(importe)));
+    datos.append("ticketBomba", archivoTicketBomba);
+    if (archivoTicketEdenred) datos.append("ticketEdenred", archivoTicketEdenred);
+    if (archivoPdfFusionado) datos.append("pdfFusionado", archivoPdfFusionado);
+    try {
+      const remoto = await crearTicketApi(datos);
+      agregarTicketCombustible({
+        unidadId, fechaHora: new Date(fechaHora).toISOString(), litros: Number(litros), importe: Number(importe),
+        urlTicketBomba: resolveApiUrl(remoto.urlTicketBomba),
+        urlTicketEdenred: resolveApiUrl(remoto.urlTicketEdenred),
+        urlPdfFusionado: resolveApiUrl(remoto.urlPdfFusionado),
+        id: String(remoto.id), subidoPor: usuario.nombre,
+      });
+      setGuardado(true);
+    } catch (apiError) {
+      setError(apiError.message);
+    } finally {
+      setGuardando(false);
+    }
   }
 
   if (guardado) {
@@ -128,8 +144,8 @@ function ModalCargarCombustible({ usuario, unidadesDelDepartamento, onCerrar }) 
           <button type="button" onClick={onCerrar} className="px-4 py-2 border border-outline-variant text-on-surface-variant rounded-lg font-label-sm text-label-sm hover:bg-surface transition-colors">
             Cancelar
           </button>
-          <button type="submit" className="px-4 py-2 bg-primary text-on-primary rounded-lg font-label-sm text-label-sm hover:bg-secondary transition-colors">
-            Guardar recarga
+          <button type="submit" disabled={guardando} className="px-4 py-2 bg-primary text-on-primary rounded-lg font-label-sm text-label-sm hover:bg-secondary transition-colors disabled:opacity-60">
+            {guardando ? "Guardando…" : "Guardar recarga"}
           </button>
         </div>
       </form>

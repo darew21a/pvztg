@@ -14,14 +14,43 @@ import { coincideBusqueda } from "../../utils/coincideBusqueda.js";
  * @param {(fila: Object, indice: number) => string | number} [props.obtenerLlave]  Para el `key` de cada fila; por defecto usa el índice.
  * @param {(fila: Object) => void} [props.onFilaClick]  Si se pasa, cada fila se vuelve clicable (ej. para abrir un detalle).
  */
-function TablaColumnasDinamicas({ filas, columnas, obtenerLlave, onFilaClick, searchQuery = "", resaltarFilas = false }) {
+function TablaColumnasDinamicas({
+  filas,
+  columnas,
+  obtenerLlave,
+  onFilaClick,
+  searchQuery = "",
+  resaltarFilas = false,
+  coincideFila,
+  scrollRequest = 0,
+  scrollVertical = false,
+  allowVerticalScrollChaining = false,
+  unidadesAnomalia = [],
+  classNameFila,
+  styleFila,
+}) {
   const [columnasActivas, setColumnasActivas] = useState(() => new Set(columnas.filter((columna) => !columna.opcional).map((columna) => columna.key)));
   const tablaRef = useRef(null);
 
   useEffect(() => {
-    if (!searchQuery.trim() && !resaltarFilas) return;
-    tablaRef.current?.querySelector('[data-search-match="true"]')?.scrollIntoView({ behavior: "smooth", block: "center" });
-  }, [searchQuery, filas, resaltarFilas]);
+    if (!scrollRequest && unidadesAnomalia.length === 0) return;
+    const match = tablaRef.current?.querySelector('[data-anomaly-match="true"]')
+      ?? tablaRef.current?.querySelector('[data-search-match="true"]');
+    if (!match) return;
+
+    if (scrollVertical && tablaRef.current) {
+      const container = tablaRef.current;
+      const row = match.getBoundingClientRect();
+      const bounds = container.getBoundingClientRect();
+      container.scrollTo({
+        top: container.scrollTop + row.top - bounds.top - (container.clientHeight - row.height) / 2,
+        behavior: "smooth",
+      });
+      return;
+    }
+
+    match.scrollIntoView({ behavior: "smooth", block: "center" });
+  }, [scrollRequest, scrollVertical, unidadesAnomalia, filas.length]);
 
   function alternarColumna(key) {
     setColumnasActivas((anteriores) => {
@@ -59,32 +88,47 @@ function TablaColumnasDinamicas({ filas, columnas, obtenerLlave, onFilaClick, se
       )}
 
       {/* overflow-x-auto contiene el desbordamiento DENTRO de la tabla, nunca se sale del layout ni requiere zoom. */}
-      <div ref={tablaRef} className="overflow-x-auto max-w-full border border-outline-variant rounded-lg">
-        <table className="w-full text-left text-sm">
+      <div
+        ref={tablaRef}
+        className={`table-scroll transaction-table-scroll custom-scrollbar max-w-full ${allowVerticalScrollChaining ? "table-scroll-chain-vertical" : ""}`}
+        role="region"
+        tabIndex={0}
+        aria-label="Tabla de datos desplazable"
+      >
+        <table className="fleet-color-table w-full text-left text-[11px]">
           <thead className="bg-surface-container-high font-label-sm text-label-sm text-on-surface-variant uppercase sticky top-0 z-10">
             <tr>
               {columnasVisibles.map((columna) => (
-                <th key={columna.key} className={`p-2 whitespace-nowrap ${columna.alinearDerecha ? "text-right" : "text-left"}`}>
+                <th key={columna.key} className={`p-1.5 whitespace-nowrap ${columna.alinearDerecha ? "text-right" : "text-left"}`}>
                   {columna.label}
                 </th>
               ))}
             </tr>
           </thead>
-          <tbody className="divide-y divide-outline-variant/20 bg-surface-container-lowest">
-            {filas.map((fila, indice) => (
+          <tbody className="divide-y divide-outline-variant/20">
+            {filas.map((fila, indice) => {
+              const coincide = coincideFila ? coincideFila(fila) : coincideBusqueda(fila, searchQuery);
+              const resaltada = resaltarFilas || coincide;
+              const coincideAnomalia = unidadesAnomalia.includes(String(fila.id));
+              const claseFila = classNameFila?.(fila) ?? "";
+              const estiloFila = styleFila?.(fila) ?? undefined;
+              return (
               <tr
                 key={obtenerLlave ? obtenerLlave(fila, indice) : indice}
                 onClick={onFilaClick ? () => onFilaClick(fila) : undefined}
-                data-search-match={resaltarFilas || coincideBusqueda(fila, searchQuery) ? "true" : undefined}
-                className={`transition-colors ${resaltarFilas || coincideBusqueda(fila, searchQuery) ? "bg-green-100 hover:bg-green-200" : "hover:bg-surface-container-low"} ${onFilaClick ? "cursor-pointer" : ""}`}
+                data-search-match={coincide ? "true" : undefined}
+                data-anomaly-match={coincideAnomalia ? "true" : undefined}
+                style={estiloFila}
+                className={`transition-colors ${claseFila} ${coincideAnomalia ? "outline outline-2 outline-offset-[-2px] outline-orange-700" : resaltada ? "outline outline-1 outline-offset-[-1px] outline-primary" : ""} ${onFilaClick ? "cursor-pointer" : ""} ${!coincideAnomalia && !resaltada ? "hover:brightness-[0.98]" : ""}`}
               >
                 {columnasVisibles.map((columna) => (
-                  <td key={columna.key} className={`p-2 whitespace-nowrap ${columna.alinearDerecha ? "text-right" : "text-left"}`}>
+                  <td key={columna.key} className={`p-1.5 whitespace-nowrap ${columna.alinearDerecha ? "text-right" : "text-left"}`}>
                     {columna.render ? columna.render(fila) : String(fila[columna.key] ?? "-")}
                   </td>
                 ))}
               </tr>
-            ))}
+              );
+            })}
             {filas.length === 0 && (
               <tr>
                 <td colSpan={columnasVisibles.length} className="p-6 text-center text-on-surface-variant">

@@ -40,7 +40,7 @@ export default {
         "on-tertiary-fixed-variant": "#77302e",
         "secondary-fixed-dim": "#4edea3",
         "primary-container": "#004e34", // ver nota arriba
-        background: "#f7faf5",
+        background: "#F0EEE9",
         secondary: "#006c49",
         // Acento del doc de diseño para "power flow" / estados activos (no existía
         // como token propio en el HTML original; queda disponible como accent-*)
@@ -95,7 +95,7 @@ export default {
         "display-lg": ["48px", { lineHeight: "1.2", letterSpacing: "-0.02em", fontWeight: "700" }],
         "technical-mono": ["14px", { lineHeight: "1.5", fontWeight: "400" }],
         "body-lg": ["18px", { lineHeight: "1.6", fontWeight: "400" }],
-        "label-sm": ["12px", { lineHeight: "1", letterSpacing: "0.05em", fontWeight: "600" }],
+        "label-sm": ["13px", { lineHeight: "1.25", letterSpacing: "0.035em", fontWeight: "600" }],
         "headline-lg": ["32px", { lineHeight: "1.3", fontWeight: "600" }],
         "body-md": ["16px", { lineHeight: "1.5", fontWeight: "400" }],
         "headline-lg-mobile": ["24px", { lineHeight: "1.3", fontWeight: "600" }],
