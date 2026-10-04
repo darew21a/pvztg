@@ -88,6 +88,27 @@ La restauración contra `DB_NAME` está bloqueada por defecto. Para una
 restauración operativa explícita se requiere `RESTORE_ALLOW_PRODUCTION=true`,
 una ventana autorizada y una verificación previa del archivo.
 
+### Operación permanente en Windows y respaldos separados
+
+Para producción, ejecutar el backend mediante un servicio de Windows aprobado
+(por ejemplo NSSM, PM2 como servicio o el mecanismo institucional equivalente)
+con reinicio automático, usuario de servicio dedicado, logs rotados y variables
+de entorno fuera del repositorio. Después de cada inicio o reinicio se deben
+comprobar `/api/health`, `/api/health/ready` y `/api/version`.
+
+Los respaldos deben conservarse en ubicaciones restringidas y separadas:
+
+1. Base de datos: `npm run db:backup`, validación y copia fuera del servidor.
+2. Archivos cargados: copia de `backend/uploads/` con la misma política de
+   retención y permisos.
+3. Configuración: inventario seguro de variables y secretos en un almacén
+   institucional; nunca copiar `.env` al repositorio.
+
+Una restauración de prueba debe ejecutarse periódicamente en una base temporal
+distinta de `DB_NAME`, comparando tablas, migraciones y datos representativos.
+La programación exacta, el RTO/RPO y los responsables deben ser aprobados por
+la operación antes del lanzamiento.
+
 El build de producción se comprueba con `npm run build` y se puede servir
 localmente con `npm run preview -- --host localhost`. No se deben usar
 `npm run dev` ni `SEED_RESET_PASSWORDS=true` como procesos de producción.
@@ -397,6 +418,30 @@ versión de build atienden una instancia. Sólo devuelve metadatos no sensibles:
 servicio, versión, entorno y hora de arranque. La versión puede fijarse con
 `APP_VERSION` durante el despliegue.
 
+### Evidencia de validación reproducida el 4 de octubre de 2026
+
+La copia de prueba `pvztg_test2` fue verificada sin modificar la base
+operativa `pvztg`. La base contiene las 20 migraciones versionadas hasta
+`019-global-anomaly-acknowledgement.sql`, con cero migraciones pendientes.
+
+- Suite frontend: 74 pruebas exitosas, 0 fallos.
+- Suite backend sin MySQL: 56 pruebas exitosas, 19 omitidas por requerir
+  integración.
+- Integración backend en base temporal: 19 pruebas exitosas, 0 fallos.
+- Login probado para STT, APV y jefe de departamento.
+- Consultas protegidas de usuarios, unidades, Edenred y reportes verificadas.
+- Carga y descarga autenticada de un PDF verificadas; los documentos de prueba
+  permanecen fuera del repositorio en `backend/uploads/`.
+- Backup de `pvztg_test2` creado y validado.
+- Restauración en una segunda base temporal verificada con los mismos 20
+  registros de migración, 9 departamentos, 52 unidades, 7 cargas Edenred y
+  1 reporte.
+
+La validación visual se ejecutó en instancias locales separadas para no
+interferir con otros servidores activos. La aceptación operativa de producción
+continúa dependiendo de secretos, permisos y el mecanismo de procesos Windows
+de la instalación destino.
+
 ### Fase 8 — Preparación técnica de lanzamiento
 
 La aplicación incluye una comprobación reproducible de configuración de
@@ -421,12 +466,13 @@ Checklist técnico de salida:
 
 | Control | Estado verificable |
 |---|---|
-| Integración backend contra base temporal | Pendiente en la verificación actual; requiere `TEST_DB_NAME` aislada |
-| Suite backend sin base | 43 aprobadas; 15 de integración omitidas por falta de base temporal |
+| Integración backend contra base temporal | Verificada en `pvztg_test2` y en una base temporal aislada |
+| Suite backend sin base | 56 aprobadas; 19 de integración omitidas por falta de `TEST_DB_NAME` en esa ejecución |
 | Build frontend | Exitoso en la verificación actual |
+| Suite frontend | 74 aprobadas; 0 fallos |
 | Lint frontend | Sin errores; 2 advertencias React existentes |
-| Migraciones versionadas | Migración 012 agregada al código; su aplicación en base de datos no está verificada |
-| Backup validado antes de la promoción | No verificado para los cambios actuales |
+| Migraciones versionadas | 20 aplicadas en `pvztg_test2`, hasta `019` |
+| Backup validado antes de la promoción | Verificado para `pvztg_test2` y restaurado en una base temporal |
 | Health y readiness | Cubiertos por pruebas automatizadas; no se verificó el servicio de producción en esta sesión |
 | Controles de seguridad | Cubiertos por pruebas automatizadas; no equivale a auditoría completa del despliegue |
 | Métricas y request ID | Cubiertos por pruebas automatizadas |
