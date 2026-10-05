@@ -115,10 +115,19 @@ function ModalLevantarReporte({ usuario, unidadesDelDepartamento, onCerrar }) {
 
     setGuardando(true);
     const pestañaPdf = window.open("about:blank", "_blank");
+    let pdfCreado = false;
     try {
-      const reporteLocal = { ...datosReporte, id: `local-${Date.now()}` };
+      const fechaLocal = new Date().toISOString();
+      const reporteLocal = {
+        ...datosReporte,
+        id: `local-${Date.now()}`,
+        folio: `PVZTG-LOCAL-${Date.now().toString(36).toUpperCase()}`,
+        fecha: fechaLocal,
+      };
       const urlPdf = await generarPdfReporte(reporteLocal, unidadesElegidas);
+      pdfCreado = true;
       if (pestañaPdf && !pestañaPdf.closed) pestañaPdf.location.href = urlPdf;
+      setPdfGenerado({ folio: reporteLocal.folio, url: urlPdf, guardado: false });
       const formulario = new FormData();
       Object.entries(datosReporte).forEach(([clave, valor]) => {
         if (Array.isArray(valor)) valor.forEach((item) => formulario.append(`${clave}[]`, item));
@@ -131,10 +140,12 @@ function ModalLevantarReporte({ usuario, unidadesDelDepartamento, onCerrar }) {
       const pdfPersistido = resolveApiUrl(remoto.pdfUrl) || urlPdf;
       const reporte = agregarReporteRemoto({ ...datosReporte, pdfUrl: pdfPersistido }, remoto);
       actualizarReporte(reporte.id, { pdfUrl: pdfPersistido });
-      setPdfGenerado({ folio: remoto.folio, url: urlPdf });
+      setPdfGenerado({ folio: remoto.folio, url: urlPdf, guardado: true });
     } catch (apiError) {
-      if (pestañaPdf && !pestañaPdf.closed) pestañaPdf.close();
-      setError(apiError.message);
+      if (!pdfCreado && pestañaPdf && !pestañaPdf.closed) pestañaPdf.close();
+      setError(pdfCreado
+        ? `El PDF se generó correctamente, pero no pudo guardarse en el sistema: ${apiError.message}`
+        : apiError.message);
     } finally {
       setGuardando(false);
     }
@@ -144,11 +155,22 @@ function ModalLevantarReporte({ usuario, unidadesDelDepartamento, onCerrar }) {
     return (
       <div className="fixed inset-0 bg-on-surface/40 backdrop-blur-sm z-50 flex items-center justify-center p-4">
         <div onClick={(event) => event.stopPropagation()} className="bg-surface-container-lowest rounded-xl shadow-2xl max-w-md w-full p-6 space-y-4 text-center">
-          <span className="material-symbols-outlined text-primary text-5xl icon-fill">task_alt</span>
-          <p className="font-title-md text-title-md text-on-surface">Reporte enviado - Folio {pdfGenerado.folio}</p>
-          <p className="font-body-md text-body-md text-on-surface-variant text-sm">
-            El PDF quedó listo para descargar y se conserva como constancia del incidente.
+          <span className={`material-symbols-outlined text-5xl icon-fill ${pdfGenerado.guardado ? "text-primary" : "text-tertiary"}`}>
+            {pdfGenerado.guardado ? "task_alt" : "picture_as_pdf"}
+          </span>
+          <p className="font-title-md text-title-md text-on-surface">
+            {pdfGenerado.guardado ? "Reporte enviado" : "PDF generado"} - Folio {pdfGenerado.folio}
           </p>
+          <p className="font-body-md text-body-md text-on-surface-variant text-sm">
+            {pdfGenerado.guardado
+              ? "El PDF quedó listo para descargar y se conserva como constancia del incidente."
+              : "El PDF quedó listo para descargar, pero el reporte no se pudo guardar en el sistema."}
+          </p>
+          {error && (
+            <p role="alert" className="font-body-md text-body-md text-error bg-error-container/20 border border-error-container rounded-lg px-3 py-2 text-sm">
+              {error}
+            </p>
+          )}
           <div className="flex justify-center gap-2">
             <GlowButton
               as="a"

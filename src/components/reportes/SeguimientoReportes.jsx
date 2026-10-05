@@ -1,10 +1,10 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useSearchParams } from "react-router-dom";
-import { actualizarReporte, ESTADOS_REPORTE } from "../../data/reportesStore.js";
+import { actualizarReporte, eliminarReporte, ESTADOS_REPORTE } from "../../data/reportesStore.js";
 import { formatearFechaHora } from "../../utils/formatearFecha.js";
 import { obtenerNombreDepartamento } from "../../data/departamentosStore.js";
 import EnlaceDescargaProtegida from "../ui/EnlaceDescargaProtegida.jsx";
-import { actualizarReporteApi, agregarSeguimientoReporteApi } from "../../services/reporteService.js";
+import { actualizarReporteApi, agregarSeguimientoReporteApi, eliminarReporteApi } from "../../services/reporteService.js";
 import { obtenerAniosDisponibles, useActualYear } from "../../hooks/useEjercicioFiscal.js";
 
 const CLASES_ESTADO = {
@@ -109,6 +109,30 @@ function SeguimientoReportes({ reportes, usuario, soloDepartamento = false }) {
     }
   }
 
+  async function borrarReporte() {
+    if (!reporteSeleccionado || soloDepartamento) return;
+    const confirmado = window.confirm(
+      `¿Eliminar permanentemente el reporte ${reporteSeleccionado.folio}?\n\nTambién se eliminarán su seguimiento, relaciones y PDF asociado. Esta acción no se puede deshacer.`,
+    );
+    if (!confirmado) return;
+
+    try {
+      setErrorOperacion("");
+      await eliminarReporteApi(reporteSeleccionado.id);
+      eliminarReporte(reporteSeleccionado.id);
+      setReporteSeleccionadoId(null);
+      if (reporteSolicitadoId) {
+        setSearchParams((actuales) => {
+          const siguientes = new URLSearchParams(actuales);
+          siguientes.delete("reporte");
+          return siguientes;
+        }, { replace: true });
+      }
+    } catch (error) {
+      setErrorOperacion(error.message);
+    }
+  }
+
   function actualizarFiltro(campo, valor) {
     setFiltros((actuales) => ({ ...(reporteSolicitadoId ? FILTROS_VACIOS : actuales), [campo]: valor }));
     setPagina(1);
@@ -196,9 +220,19 @@ function SeguimientoReportes({ reportes, usuario, soloDepartamento = false }) {
                   <p className="text-sm text-on-surface-variant">{reporteSeleccionado.autorNombre} · {obtenerNombreDepartamento(reporteSeleccionado.autorDepartamento)}</p>
                 </div>
                 {!soloDepartamento && (
-                  <select value={reporteSeleccionado.estado ?? "recibido"} onChange={(event) => cambiarEstado(event.target.value)} className="rounded-md border border-outline-variant bg-surface-bright px-3 py-2 text-sm">
-                    {ESTADOS_REPORTE.map((estado) => <option key={estado.value} value={estado.value}>{estado.label}</option>)}
-                  </select>
+                  <div className="flex flex-wrap items-center gap-2">
+                    <select value={reporteSeleccionado.estado ?? "recibido"} onChange={(event) => cambiarEstado(event.target.value)} className="rounded-md border border-outline-variant bg-surface-bright px-3 py-2 text-sm">
+                      {ESTADOS_REPORTE.map((estado) => <option key={estado.value} value={estado.value}>{estado.label}</option>)}
+                    </select>
+                    <button
+                      type="button"
+                      onClick={borrarReporte}
+                      className="inline-flex items-center gap-1 rounded-md border border-error/50 px-3 py-2 text-sm text-error hover:bg-error-container/20"
+                    >
+                      <span className="material-symbols-outlined text-[17px]">delete</span>
+                      Eliminar
+                    </button>
+                  </div>
                 )}
               </div>
 

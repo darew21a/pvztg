@@ -143,11 +143,6 @@ export async function generarPdfReporte(reporte, unidades) {
   y += 7;
   y = escribirParrafo(documento, reporte.descripcion, y, anchoPagina, altoPagina, reporte, textoTipo, logoCfeBase64);
 
-  if (y > altoPagina - 48) {
-    documento.addPage();
-    dibujarMarcaDeAgua(documento, anchoPagina, altoPagina);
-    dibujarMembretado(documento, anchoPagina, reporte, textoTipo, logoCfeBase64);
-  }
   dibujarPieDeFirma(documento, reporte, altoPagina);
 
   return documento.output("bloburl").toString();

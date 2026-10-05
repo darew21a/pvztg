@@ -81,6 +81,11 @@ export function actualizarReporte(id, cambios) {
   return reportes.find((reporte) => reporte.id === id) ?? null;
 }
 
+export function eliminarReporte(id) {
+  reportes = reportes.filter((reporte) => String(reporte.id) !== String(id));
+  notificar();
+}
+
 export function agregarSeguimientoReporte(id, { autorTipo, autorNombre, mensaje }) {
   const texto = String(mensaje ?? "").trim();
   if (!texto) return null;

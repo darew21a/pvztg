@@ -27,6 +27,10 @@ export function actualizarReporteApi(id, datos) {
   return request(`/reportes/${encodeURIComponent(id)}`, { method: "PATCH", body: JSON.stringify(datos) });
 }
 
+export function eliminarReporteApi(id) {
+  return request(`/reportes/${encodeURIComponent(id)}`, { method: "DELETE" });
+}
+
 export function agregarSeguimientoReporteApi(id, mensaje) {
   return request(`/reportes/${encodeURIComponent(id)}/seguimiento`, {
     method: "POST",

@@ -1,7 +1,9 @@
 import { Router } from "express";
+import fs from "node:fs/promises";
+import path from "node:path";
 import { query, pool } from "../config/db.js";
 import { requireAuth, requireRoles } from "../middleware/auth.js";
-import { uploadFiles, uploadedFileUrl, validateUploadedFileSignatures } from "../middleware/upload.js";
+import { UPLOADS_DIR, uploadFiles, uploadedFileUrl, validateUploadedFileSignatures } from "../middleware/upload.js";
 import { getStoredFileUrl } from "../utils/storedFileUrl.js";
 import { isDepartmentAllowed, parsePositiveId } from "../policies/accessPolicy.js";
 import { parsePagination, setPaginationHeaders } from "../utils/pagination.js";
@@ -188,6 +190,65 @@ router.patch("/reportes/:id", requireRoles("stt", "apv"), async (req, res) => {
     entityId: reporteId,
   });
   return res.json({ mensaje: "Reporte actualizado correctamente." });
+});
+
+router.delete("/reportes/:id", requireRoles("stt", "apv"), async (req, res) => {
+  const reporteId = parsePositiveId(req.params.id);
+  if (!reporteId) return res.status(400).json({ mensaje: "El identificador del reporte no es válido." });
+
+  const [reportRows] = await pool.query(
+    "SELECT id, folio, pdf_url, departamento_id FROM reportes WHERE id = ? LIMIT 1",
+    [reporteId],
+  );
+  const reporte = reportRows[0];
+  if (!reporte) return res.status(404).json({ mensaje: "Reporte no encontrado." });
+
+  const connection = await pool.getConnection();
+  try {
+    await connection.beginTransaction();
+    await connection.execute("DELETE FROM reporte_seguimiento WHERE reporte_id = ?", [reporteId]);
+    await connection.execute("DELETE FROM reporte_unidades WHERE reporte_id = ?", [reporteId]);
+    await connection.execute("DELETE FROM reportes WHERE id = ?", [reporteId]);
+    await connection.commit();
+
+    let archivoEliminado = true;
+    if (reporte.pdf_url) {
+      const match = String(reporte.pdf_url).match(/^\/api\/uploads\/([a-f0-9-]+)\.(pdf|jpg|png)$/i);
+      if (match) {
+        try {
+          await fs.unlink(path.join(UPLOADS_DIR, `${match[1]}.${match[2].toLowerCase()}`));
+        } catch (error) {
+          if (error.code !== "ENOENT") {
+            archivoEliminado = false;
+            console.error(`No fue posible eliminar el PDF del reporte ${reporteId}:`, error.message);
+          }
+        }
+      }
+    }
+
+    await notifyMovementSafely({
+      actorId: req.auth.sub,
+      departmentId: reporte.departamento_id,
+      type: "reporte-eliminado",
+      title: "Reporte eliminado",
+      detail: `${reporte.folio} fue eliminado por ${req.auth.name || req.auth.username}.`,
+      entityType: "reporte",
+      entityId: reporteId,
+    });
+
+    return res.json({
+      mensaje: archivoEliminado
+        ? "Reporte eliminado correctamente."
+        : "Reporte eliminado de la base de datos, pero no fue posible eliminar su archivo PDF.",
+      id: reporteId,
+      archivoEliminado,
+    });
+  } catch (error) {
+    await connection.rollback();
+    throw error;
+  } finally {
+    connection.release();
+  }
 });
 
 router.post("/reportes/:id/seguimiento", requireRoles("stt", "apv", "jefe-departamento"), async (req, res) => {
