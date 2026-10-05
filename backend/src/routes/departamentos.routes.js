@@ -3,7 +3,6 @@ import { query } from "../config/db.js";
 import { requireAuth, requireRoles } from "../middleware/auth.js";
 
 const router = Router();
-router.use(requireAuth);
 
 router.get("/departamentos", async (_req, res) => {
   const rows = await query(
@@ -16,7 +15,7 @@ router.get("/departamentos", async (_req, res) => {
   return res.json(rows);
 });
 
-router.post("/departamentos", requireRoles("stt", "apv"), async (req, res) => {
+router.post("/departamentos", requireAuth, requireRoles("stt", "apv"), async (req, res) => {
   const nombre = String(req.body?.nombre ?? "").trim();
   const icono = String(req.body?.icono ?? "corporate_fare").trim();
   if (!nombre || nombre.length > 150) {
