@@ -26,6 +26,35 @@ sus filtros visibles y desplaza las filas en un área propia con encabezado fijo
 
 ## Cómo correrlo
 
+### Instalación local automática en Windows
+
+En una computadora nueva, instala Node.js y MySQL, abre PowerShell en la
+carpeta del proyecto y ejecuta una sola vez:
+
+```powershell
+npm run setup:local
+```
+
+El comando instala las dependencias del frontend y backend, crea los archivos
+`.env` sólo si no existen, crea la base `pvztg`, aplica las migraciones y
+genera los usuarios locales de desarrollo. No sobrescribe configuraciones
+existentes ni sube secretos al repositorio.
+
+Después abre dos terminales:
+
+```powershell
+# Terminal 1
+cd backend
+npm start
+
+# Terminal 2
+npm run dev
+```
+
+Abre `http://localhost:5173/`. En una instalación local nueva, el usuario APV
+de prueba es `apvadmin` y la contraseña `CFE2026!`; cambia la contraseña antes
+de usar el sistema fuera de desarrollo.
+
 Frontend:
 ```
 npm install
